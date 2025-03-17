@@ -7,6 +7,10 @@
 - Users can then query the images with natural language. During querying, it will use full-text search and vector search to find the most relevant images.(Done)
 - Users can browse the images on the UI, on click thumbnail, modal opens with image and its tags, description, and text within the image.(Done)
 
+## Project Structure Notes
+- requirements.txt should ONLY exist in the root directory, not in backend/
+- All dependencies should be listed in the root requirements.txt file
+
 ## UI
 - Local server web page with Tailwind CSS, Vue3, and HTML.
     - Tailwind CSS CDN:   <script src="https://cdn.tailwindcss.com"></script>

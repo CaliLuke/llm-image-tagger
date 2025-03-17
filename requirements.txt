@@ -1,4 +1,16 @@
+# Python version
+python_version >= "3.11"
+
 fastapi==0.115.6
 uvicorn==0.32.1
 ollama==0.4.4
-chromadb
+chromadb>=0.4.0
+pytest==8.0.0
+pytest-asyncio==0.23.5  # For testing async functions
+pydantic>=2.9.0
+python-multipart>=0.0.9
+httpx>=0.27.0
+jinja2>=3.1.3
+python-dotenv>=1.0.0
+urllib3<2.0.0  # Pin urllib3 to v1.x to avoid SSL warnings
+pillow>=10.2.0  # For image processing

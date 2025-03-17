@@ -17,14 +17,31 @@ def parse_args():
     parser.add_argument("--host", default="127.0.0.1", help="Host to run the server on")
     parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
     parser.add_argument("--no-browser", action="store_true", help="Don't open the browser automatically")
+    parser.add_argument("--debug", action="store_true", help="Run in debug mode with tests")
+    parser.add_argument("--skip-tests", action="store_true", help="Skip running tests even in debug mode")
     return parser.parse_args()
+
+def run_tests():
+    """Run the test suite."""
+    print("\nRunning test suite...")
+    result = subprocess.run([sys.executable, "-m", "pytest", "-v"], text=True)
+    if result.returncode != 0:
+        print("Tests failed! Please fix the failing tests before continuing.")
+        return False
+    return True
 
 def main():
     """Main function to run the application."""
     args = parse_args()
     
-    # Change to the backend directory
-    os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend"))
+    # Change to the project root directory
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(project_root)
+    
+    # In debug mode, run tests first (unless --skip-tests is specified)
+    if args.debug and not args.skip_tests:
+        if not run_tests():
+            sys.exit(1)
     
     # Set environment variables
     os.environ["API_HOST"] = args.host
@@ -35,7 +52,8 @@ def main():
     server_process = subprocess.Popen([
         sys.executable, "-m", "uvicorn", "main:app", 
         "--host", args.host, 
-        "--port", str(args.port)
+        "--port", str(args.port),
+        "--reload" if args.debug else ""
     ])
     
     # Open the browser

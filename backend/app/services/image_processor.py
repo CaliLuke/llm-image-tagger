@@ -11,9 +11,16 @@ from ..models.schemas import ImageDescription, ImageTags, ImageText
 class ImageProcessor:
     """Service for processing images using Ollama vision model."""
     
-    def __init__(self, model_name: Optional[str] = None):
-        """Initialize the image processor with the specified model."""
+    def __init__(self, model_name: Optional[str] = None, stop_check=None):
+        """
+        Initialize the image processor with the specified model.
+        
+        Args:
+            model_name: Name of the Ollama model to use
+            stop_check: Function that returns True if processing should stop
+        """
         self.model_name = model_name or settings.OLLAMA_MODEL
+        self.stop_check = stop_check
         # Set Ollama host if specified in settings
         if settings.OLLAMA_HOST:
             os.environ["OLLAMA_HOST"] = settings.OLLAMA_HOST
@@ -37,6 +44,16 @@ class ImageProcessor:
             if not image_path.exists():
                 raise FileNotFoundError(f"Image not found: {image_path}")
 
+            # Check if processing should stop
+            if self.stop_check and self.stop_check():
+                logger.info(f"Stopping image processing for {image_path} due to stop request")
+                return {
+                    "description": "",
+                    "tags": [],
+                    "text_content": "",
+                    "is_processed": False
+                }
+
             # Convert image path to string for Ollama
             image_path_str = str(image_path)
 
@@ -45,10 +62,30 @@ class ImageProcessor:
             description_response = await self._get_description(image_path_str)
             logger.debug(f"Received description: {description_response.description}")
             
+            # Check if processing should stop
+            if self.stop_check and self.stop_check():
+                logger.info(f"Stopping image processing for {image_path} after getting description")
+                return {
+                    "description": description_response.description,
+                    "tags": [],
+                    "text_content": "",
+                    "is_processed": False
+                }
+            
             # Get tags
             logger.info(f"Getting tags for image: {image_path}")
             tags_response = await self._get_tags(image_path_str)
             logger.debug(f"Received tags: {tags_response.tags}")
+            
+            # Check if processing should stop
+            if self.stop_check and self.stop_check():
+                logger.info(f"Stopping image processing for {image_path} after getting tags")
+                return {
+                    "description": description_response.description,
+                    "tags": tags_response.tags,
+                    "text_content": "",
+                    "is_processed": False
+                }
             
             # Get text content
             logger.info(f"Getting text content for image: {image_path}")
@@ -142,6 +179,11 @@ class ImageProcessor:
             Exception: If there is an error querying Ollama
         """
         try:
+            # Check if processing should stop before making the API call
+            if self.stop_check and self.stop_check():
+                logger.info(f"Skipping Ollama query due to stop request")
+                raise Exception("Processing stopped by user")
+                
             response = ollama.chat(
                 model=self.model_name,
                 messages=[{

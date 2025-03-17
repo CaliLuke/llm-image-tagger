@@ -1,9 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from pathlib import Path
 import os
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 from ..core.logging import logger
 from ..models.schemas import (
@@ -22,13 +22,17 @@ from ..utils.helpers import (
     load_or_create_metadata, 
     create_image_info
 )
+from pydantic import BaseModel
 
 # Create router
 router = APIRouter()
 
-# Global state
-current_folder: Optional[str] = None
-vector_store: Optional[VectorStore] = None
+# Initialize router state
+router.current_folder: Optional[str] = None
+router.vector_store: Optional[VectorStore] = None
+router.is_processing: bool = False
+router.should_stop_processing: bool = False
+router.current_task = None  # Store the current background task
 
 def get_vector_store() -> VectorStore:
     """
@@ -40,9 +44,9 @@ def get_vector_store() -> VectorStore:
     Raises:
         HTTPException: If no folder is selected
     """
-    if vector_store is None:
+    if router.vector_store is None:
         raise HTTPException(status_code=400, detail="No folder selected")
-    return vector_store
+    return router.vector_store
 
 def get_current_folder() -> str:
     """
@@ -54,9 +58,9 @@ def get_current_folder() -> str:
     Raises:
         HTTPException: If no folder is selected
     """
-    if current_folder is None:
+    if router.current_folder is None:
         raise HTTPException(status_code=400, detail="No folder selected")
-    return current_folder
+    return router.current_folder
 
 def search_images(query: str, metadata: Dict[str, Dict], vector_store: VectorStore) -> List[Dict]:
     """
@@ -121,8 +125,6 @@ async def get_images(request: FolderRequest):
     Raises:
         HTTPException: If the folder does not exist or there is an error processing the folder
     """
-    global current_folder, vector_store
-    
     folder_path = Path(request.folder_path)
     
     logger.info(f"Received request to open folder: {folder_path}")
@@ -131,12 +133,12 @@ async def get_images(request: FolderRequest):
         logger.error(f"Folder not found: {folder_path}")
         raise HTTPException(status_code=404, detail="Folder not found")
     
-    current_folder = str(folder_path)
+    router.current_folder = str(folder_path)
     
     try:
         # Initialize vector store in the selected folder
         vector_store_path = folder_path / ".vectordb"
-        vector_store = VectorStore(persist_directory=str(vector_store_path))
+        router.vector_store = VectorStore(persist_directory=str(vector_store_path))
         
         metadata = load_or_create_metadata(folder_path)
         images = [create_image_info(rel_path, metadata) 
@@ -255,6 +257,7 @@ async def refresh_images():
 @router.post("/process-image", response_model=ProcessResponse)
 async def process_image(
     request: ProcessImageRequest,
+    background_tasks: BackgroundTasks,
     vector_store: VectorStore = Depends(get_vector_store)
 ):
     """
@@ -262,6 +265,7 @@ async def process_image(
     
     Args:
         request: ProcessImageRequest object
+        background_tasks: BackgroundTasks for async processing
         vector_store: VectorStore instance
         
     Returns:
@@ -270,38 +274,181 @@ async def process_image(
     Raises:
         HTTPException: If there is an error processing the image
     """
+    # Check if processing should be stopped before we even start
+    logger.info(f"process_image called with should_stop_processing={router.should_stop_processing}")
+    if router.should_stop_processing:
+        logger.info("Processing already stopped before starting (should_stop_processing=True)")
+        return {
+            "success": False,
+            "message": "Processing stopped by user",
+            "image": None
+        }
+    
+    # Set is_processing first to avoid race conditions
+    logger.info(f"Setting is_processing to True (was {router.is_processing})")
+    router.is_processing = True
+    
     try:
+        # Get the current folder path and join it with the image name
         folder_path = Path(get_current_folder())
         image_path = folder_path / request.image_path
         
         if not image_path.exists():
+            logger.info(f"Image not found: {image_path}")
             raise HTTPException(status_code=404, detail="Image not found")
         
-        # Process the image
-        processor = ImageProcessor()
-        metadata = await processor.process_image(image_path)
+        # Process the image in the background
+        async def process_image_task():
+            try:
+                logger.info(f"Starting background processing task, is_processing={router.is_processing}, should_stop_processing={router.should_stop_processing}")
+                
+                # Check if we should stop before starting
+                if router.should_stop_processing:
+                    logger.info("Processing stopped before starting")
+                    router.is_processing = False
+                    return
+                
+                processor = ImageProcessor(stop_check=should_stop)
+                
+                try:
+                    metadata = await processor.process_image(image_path)
+                except Exception as e:
+                    if str(e) == "Processing stopped by user":
+                        logger.info("Processing stopped during image processing")
+                        router.is_processing = False  # Reset is_processing flag
+                        return
+                    else:
+                        raise
+                
+                # Check if processing should be stopped after processing
+                if router.should_stop_processing:
+                    logger.info("Processing stopped after processing image")
+                    router.is_processing = False  # Reset is_processing flag
+                    return
+                    
+                # Update metadata file
+                update_image_metadata(get_current_folder(), request.image_path, metadata)
+                
+                # Update vector store
+                vector_store.add_or_update_image(request.image_path, metadata)
+                logger.info("Background processing completed successfully")
+            except Exception as e:
+                logger.error(f"Error in background task: {str(e)}")
+            finally:
+                # Always reset is_processing to False when the task is done
+                logger.info(f"Resetting is_processing to False (was {router.is_processing})")
+                router.is_processing = False
         
-        # Update metadata file
-        update_image_metadata(folder_path, request.image_path, metadata)
+        background_tasks.add_task(process_image_task)
+        logger.debug(f"Added background task, returning response with is_processing={router.is_processing}")
         
-        # Update vector store
-        vector_store.add_or_update_image(request.image_path, metadata)
-        
-        # Create ImageInfo object
-        image_info = create_image_info(request.image_path, {request.image_path: metadata})
+        # Create initial ImageInfo object
+        image_info = create_image_info(request.image_path, {request.image_path: {
+            "description": "",
+            "tags": [],
+            "text_content": "",
+            "is_processed": False
+        }})
         
         return {
             "success": True,
-            "message": "Image processed successfully",
+            "message": "Image processing started",
             "image": image_info
         }
     except Exception as e:
         logger.error(f"Error processing image: {str(e)}")
+        logger.debug("Resetting is_processing to False due to error")
+        router.is_processing = False  # Reset on error
         return {
             "success": False,
             "message": f"Error processing image: {str(e)}",
             "image": None
         }
+
+@router.post("/stop-processing")
+async def stop_processing():
+    """Stop the current image processing operation."""
+    logger.info(f"stop_processing called with is_processing={router.is_processing}, should_stop_processing={router.should_stop_processing}")
+    
+    # Always set should_stop_processing to True, even if is_processing is False
+    # This ensures that any subsequent processing attempts will be stopped
+    old_should_stop_processing = router.should_stop_processing
+    router.should_stop_processing = True
+    logger.info(f"Set should_stop_processing from {old_should_stop_processing} to True")
+    
+    # We don't reset is_processing here, it will be reset by the background task
+    # when it checks should_stop_processing and stops
+    
+    if not router.is_processing:
+        logger.info("No processing was in progress, but should_stop_processing is now True")
+        return {"message": "No processing operation in progress"}
+    
+    logger.info("Processing was in progress, will be stopped")
+    return {"message": "Processing will be stopped"}
+
+@router.post("/reset-processing-state")
+async def reset_processing_state():
+    """Reset the processing state."""
+    logger.info(f"reset_processing_state called with is_processing={router.is_processing}, should_stop_processing={router.should_stop_processing}")
+    
+    # Always reset both flags to ensure a clean state
+    old_is_processing = router.is_processing
+    old_should_stop_processing = router.should_stop_processing
+    
+    router.should_stop_processing = False  # Reset to false to allow new processing
+    router.is_processing = False  # Then set is_processing to false
+    
+    logger.info(f"Reset processing state from is_processing={old_is_processing}, should_stop_processing={old_should_stop_processing} to is_processing=False, should_stop_processing=False")
+    return {"message": "Processing state reset"}
+
+@router.post("/force-reset-processing-state")
+async def force_reset_processing_state():
+    """Force reset the processing state to allow new processing."""
+    logger.info(f"force_reset_processing_state called with is_processing={router.is_processing}, should_stop_processing={router.should_stop_processing}")
+    
+    # Force reset both flags to ensure a clean state
+    router.should_stop_processing = False
+    router.is_processing = False
+    
+    logger.info(f"Forced reset processing state to is_processing=False, should_stop_processing=False")
+    return {"message": "Processing state force reset"}
+
+@router.get("/check-init-status")
+async def check_init_status(request: Request):
+    """Check if this is the first time initialization."""
+    try:
+        # First check if current_folder exists
+        logger.debug(f"Checking if current_folder exists: {router.current_folder is not None}")
+        if router.current_folder is None:
+            logger.debug("current_folder is None, returning False")
+            return {"initialized": False, "message": "No folder selected"}
+        
+        # Check if the folder exists and is valid
+        folder_path = Path(router.current_folder)
+        logger.debug(f"Checking if folder exists: {folder_path}")
+        if not folder_path.exists() or not folder_path.is_dir():
+            logger.debug("Folder does not exist or is not a directory")
+            return {"initialized": False, "message": "Selected folder does not exist or is not a directory"}
+        
+        # Check if vector store exists and is initialized
+        vector_store_path = folder_path / ".vectordb"
+        logger.debug(f"Checking vector store path: {vector_store_path}")
+        if not vector_store_path.exists() or not vector_store_path.is_dir():
+            logger.debug("Vector store path does not exist or is not a directory")
+            return {"initialized": False, "message": "Vector database not initialized"}
+        
+        # Check if vector_store instance exists
+        logger.debug(f"Checking if vector_store exists: {router.vector_store is not None}")
+        if router.vector_store is None:
+            logger.debug("vector_store does not exist")
+            return {"initialized": False, "message": "Vector store not initialized"}
+        
+        # Only return True if we have both a valid folder and initialized vector store
+        logger.debug("All checks passed, returning True")
+        return {"initialized": True, "message": "Vector database initialized"}
+    except Exception as e:
+        logger.error(f"Error checking init status: {str(e)}")
+        return {"initialized": False, "message": f"Error: {str(e)}"}
 
 @router.post("/update-metadata", response_model=ProcessResponse)
 async def update_metadata(
@@ -370,25 +517,24 @@ async def update_metadata(
             "image": None
         }
 
-@router.get("/check-init-status")
-async def check_init_status():
-    """
-    Check if the vector database needs initialization.
-    
-    Returns:
-        Dict with initialization status
-    """
-    try:
-        if current_folder is None:
-            return {"initialized": False, "message": "No folder selected"}
-        
-        folder_path = Path(current_folder)
-        vector_db_path = folder_path / ".vectordb"
-        
-        if not vector_db_path.exists():
-            return {"initialized": False, "message": "Vector database not initialized"}
-        
-        return {"initialized": True, "message": "Vector database initialized"}
-    except Exception as e:
-        logger.error(f"Error checking initialization status: {str(e)}")
-        return {"initialized": False, "message": f"Error: {str(e)}"} 
+class LogActionRequest(BaseModel):
+    """Request model for logging user actions."""
+    action: str
+    button: str
+    tag: Optional[str] = None
+    image: Optional[str] = None
+
+@router.post("/log-action")
+async def log_action(request: LogActionRequest):
+    """Log user actions for debugging."""
+    logger.info(f"USER ACTION: {request.action} - Button: {request.button}")
+    if request.tag:
+        logger.info(f"  Tag: {request.tag}")
+    if request.image:
+        logger.info(f"  Image: {request.image}")
+    return {"success": True}
+
+# Function to check if processing should stop
+def should_stop():
+    """Check if processing should stop."""
+    return router.should_stop_processing
