@@ -18,6 +18,8 @@ from ..models.schemas import (
 )
 from ..services.image_processor import ImageProcessor, update_image_metadata
 from ..services.vector_store import VectorStore
+from ..services.processing_queue import ProcessingQueue
+from ..services.queue_processor import QueueProcessor
 from ..utils.helpers import (
     load_or_create_metadata, 
     create_image_info
@@ -33,6 +35,7 @@ router.vector_store: Optional[VectorStore] = None
 router.is_processing: bool = False
 router.should_stop_processing: bool = False
 router.current_task = None  # Store the current background task
+router.processing_queue: Optional[ProcessingQueue] = None
 
 def get_vector_store() -> VectorStore:
     """
@@ -139,6 +142,10 @@ async def get_images(request: FolderRequest):
         # Initialize vector store in the selected folder
         vector_store_path = folder_path / ".vectordb"
         router.vector_store = VectorStore(persist_directory=str(vector_store_path))
+        
+        # Initialize processing queue
+        router.processing_queue = ProcessingQueue()
+        logger.info("Initialized processing queue")
         
         metadata = load_or_create_metadata(folder_path)
         images = [create_image_info(rel_path, metadata) 
@@ -327,7 +334,10 @@ async def process_image(
                     return
                     
                 # Update metadata file
-                update_image_metadata(get_current_folder(), request.image_path, metadata)
+                folder_path = Path(get_current_folder())
+                # Use the image filename as the key in metadata
+                image_filename = Path(request.image_path).name
+                update_image_metadata(folder_path, image_filename, metadata)
                 
                 # Update vector store
                 vector_store.add_or_update_image(request.image_path, metadata)
@@ -403,15 +413,23 @@ async def reset_processing_state():
 
 @router.post("/force-reset-processing-state")
 async def force_reset_processing_state():
-    """Force reset the processing state to allow new processing."""
+    """Force reset the processing state."""
     logger.info(f"force_reset_processing_state called with is_processing={router.is_processing}, should_stop_processing={router.should_stop_processing}")
     
-    # Force reset both flags to ensure a clean state
-    router.should_stop_processing = False
+    old_is_processing = router.is_processing
+    old_should_stop_processing = router.should_stop_processing
+    
     router.is_processing = False
+    router.should_stop_processing = False
     
     logger.info(f"Forced reset processing state to is_processing=False, should_stop_processing=False")
-    return {"message": "Processing state force reset"}
+    
+    return {
+        "old_is_processing": old_is_processing,
+        "old_should_stop_processing": old_should_stop_processing,
+        "is_processing": router.is_processing,
+        "should_stop_processing": router.should_stop_processing
+    }
 
 @router.get("/check-init-status")
 async def check_init_status(request: Request):
@@ -538,3 +556,166 @@ async def log_action(request: LogActionRequest):
 def should_stop():
     """Check if processing should stop."""
     return router.should_stop_processing
+
+# Queue endpoints
+@router.post("/queue/add")
+async def add_to_queue(request: ProcessImageRequest):
+    """
+    Add an image to the processing queue.
+    
+    Args:
+        request: ProcessImageRequest object
+        
+    Returns:
+        Dictionary with task information
+        
+    Raises:
+        HTTPException: If no folder is selected or the queue is not initialized
+    """
+    if not router.current_folder:
+        raise HTTPException(status_code=400, detail="No folder selected")
+    
+    if not router.processing_queue:
+        raise HTTPException(status_code=400, detail="Queue not initialized")
+    
+    logger.info(f"Adding image to queue: {request.image_path}")
+    
+    task = router.processing_queue.add_task(request.image_path)
+    
+    return {
+        "success": True,
+        "message": "Image added to queue",
+        "task": task.to_dict()
+    }
+
+@router.get("/queue/status")
+async def get_queue_status(detailed: bool = False):
+    """
+    Get the status of the processing queue.
+    
+    Args:
+        detailed: Whether to include detailed information about the queue
+        
+    Returns:
+        Dictionary with queue status
+        
+    Raises:
+        HTTPException: If no folder is selected or the queue is not initialized
+    """
+    if not router.current_folder:
+        raise HTTPException(status_code=400, detail="No folder selected")
+    
+    if not router.processing_queue:
+        raise HTTPException(status_code=400, detail="Queue not initialized")
+    
+    logger.info("Getting queue status")
+    
+    if detailed:
+        return router.processing_queue.get_detailed_status()
+    else:
+        return router.processing_queue.get_status()
+
+@router.post("/queue/start")
+async def start_queue():
+    """
+    Start processing the queue.
+    
+    Returns:
+        Dictionary with success status
+        
+    Raises:
+        HTTPException: If no folder is selected or the queue is not initialized
+    """
+    if not router.current_folder:
+        raise HTTPException(status_code=400, detail="No folder selected")
+    
+    if not router.processing_queue:
+        raise HTTPException(status_code=400, detail="Queue not initialized")
+    
+    logger.info("Starting queue processing")
+    
+    router.processing_queue.start_processing()
+    
+    return {
+        "success": True,
+        "message": "Queue processing started"
+    }
+
+@router.post("/queue/stop")
+async def stop_queue():
+    """
+    Stop processing the queue.
+    
+    Returns:
+        Dictionary with success status
+        
+    Raises:
+        HTTPException: If no folder is selected or the queue is not initialized
+    """
+    if not router.current_folder:
+        raise HTTPException(status_code=400, detail="No folder selected")
+    
+    if not router.processing_queue:
+        raise HTTPException(status_code=400, detail="Queue not initialized")
+    
+    logger.info("Stopping queue processing")
+    
+    router.processing_queue.stop_processing()
+    
+    return {
+        "success": True,
+        "message": "Queue processing stopped"
+    }
+
+@router.post("/queue/clear")
+async def clear_queue():
+    """
+    Clear the queue.
+    
+    Returns:
+        Dictionary with success status
+        
+    Raises:
+        HTTPException: If no folder is selected or the queue is not initialized
+    """
+    if not router.current_folder:
+        raise HTTPException(status_code=400, detail="No folder selected")
+    
+    if not router.processing_queue:
+        raise HTTPException(status_code=400, detail="Queue not initialized")
+    
+    logger.info("Clearing queue")
+    
+    router.processing_queue.clear_queue()
+    
+    return {
+        "success": True,
+        "message": "Queue cleared"
+    }
+
+@router.post("/queue/process")
+async def process_queue(background_tasks: BackgroundTasks):
+    """
+    Process all tasks in the queue.
+    
+    Args:
+        background_tasks: FastAPI background tasks
+        
+    Returns:
+        Dictionary with success status
+        
+    Raises:
+        HTTPException: If no folder is selected or the queue is not initialized
+    """
+    if not router.current_folder:
+        raise HTTPException(status_code=400, detail="No folder selected")
+    
+    if not router.processing_queue:
+        raise HTTPException(status_code=400, detail="Queue not initialized")
+    
+    logger.info("Processing queue")
+    
+    processor = QueueProcessor(router.processing_queue)
+    result = await processor.process_queue(background_tasks)
+    
+    return result
