@@ -1,6 +1,6 @@
 import ollama
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
 import json
 import os
 
@@ -25,12 +25,13 @@ class ImageProcessor:
         if settings.OLLAMA_HOST:
             os.environ["OLLAMA_HOST"] = settings.OLLAMA_HOST
 
-    async def process_image(self, image_path: Path) -> Dict:
+    async def process_image(self, image_path: Path, progress_callback: Optional[Callable[[float], None]] = None) -> Dict:
         """
         Process an image using Ollama vision model to generate tags, description, and extract text.
         
         Args:
             image_path: Path to the image file
+            progress_callback: Optional callback function to report progress (0.0 to 1.0)
             
         Returns:
             Dict containing description, tags, and text_content
@@ -53,57 +54,67 @@ class ImageProcessor:
                     "text_content": "",
                     "is_processed": False
                 }
+            
+            # Initialize progress
+            if progress_callback:
+                progress_callback(0.0)
 
-            # Convert image path to string for Ollama
-            image_path_str = str(image_path)
-
-            # Get structured responses using Pydantic models
+            # Get description (33% of progress)
             logger.info(f"Getting description for image: {image_path}")
-            description_response = await self._get_description(image_path_str)
-            logger.debug(f"Received description: {description_response.description}")
+            description_result = await self._get_description(str(image_path))
+            
+            # Update progress
+            if progress_callback:
+                progress_callback(0.33)
             
             # Check if processing should stop
             if self.stop_check and self.stop_check():
-                logger.info(f"Stopping image processing for {image_path} after getting description")
+                logger.info(f"Stopping image processing for {image_path} after description due to stop request")
                 return {
-                    "description": description_response.description,
+                    "description": description_result.description,
                     "tags": [],
                     "text_content": "",
                     "is_processed": False
                 }
-            
-            # Get tags
+
+            # Get tags (66% of progress)
             logger.info(f"Getting tags for image: {image_path}")
-            tags_response = await self._get_tags(image_path_str)
-            logger.debug(f"Received tags: {tags_response.tags}")
+            tags_result = await self._get_tags(str(image_path))
+            
+            # Update progress
+            if progress_callback:
+                progress_callback(0.66)
             
             # Check if processing should stop
             if self.stop_check and self.stop_check():
-                logger.info(f"Stopping image processing for {image_path} after getting tags")
+                logger.info(f"Stopping image processing for {image_path} after tags due to stop request")
                 return {
-                    "description": description_response.description,
-                    "tags": tags_response.tags,
+                    "description": description_result.description,
+                    "tags": tags_result.tags,
                     "text_content": "",
                     "is_processed": False
                 }
-            
-            # Get text content
-            logger.info(f"Getting text content for image: {image_path}")
-            text_response = await self._get_text_content(image_path_str)
-            logger.debug(
-                f"Received text content - has_text: {text_response.has_text}, "
-                f"content: {text_response.text_content if text_response.has_text else 'None'}"
-            )
 
+            # Get text content (100% of progress)
+            logger.info(f"Getting text content for image: {image_path}")
+            text_result = await self._get_text_content(str(image_path))
+            
+            # Update progress to complete
+            if progress_callback:
+                progress_callback(1.0)
+
+            # Return combined results
             return {
-                "description": description_response.description,
-                "tags": tags_response.tags,
-                "text_content": text_response.text_content if text_response.has_text else "",
+                "description": description_result.description,
+                "tags": tags_result.tags,
+                "text_content": text_result.text_content,
                 "is_processed": True
             }
-
         except Exception as e:
             logger.error(f"Error processing image {image_path}: {str(e)}")
+            # Update progress to indicate failure
+            if progress_callback:
+                progress_callback(1.0)  # Still mark as complete even if failed
             raise
 
     async def _get_description(self, image_path: str) -> ImageDescription:

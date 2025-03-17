@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 from fastapi import BackgroundTasks
 
 from ..core.logging import logger
@@ -71,6 +71,9 @@ class QueueProcessor:
             logger.error(f"Error processing queue: {str(e)}")
         finally:
             self.queue.is_processing = False
+            # Save final state
+            if self.queue.persistence:
+                self.queue.save()
     
     async def _process_task(self, task: ImageTask) -> None:
         """
@@ -91,9 +94,19 @@ class QueueProcessor:
                 self.queue.interrupt_current_task()
                 return
             
-            # Process the image
+            # Create progress callback
+            def progress_callback(progress: float) -> None:
+                task.update_progress(progress)
+                # Auto-save on progress updates
+                if self.queue.persistence:
+                    self.queue.save()
+            
+            # Process the image with progress tracking
             image_path = Path(task.image_path)
-            metadata = await self.image_processor.process_image(image_path)
+            metadata = await self.image_processor.process_image(
+                image_path, 
+                progress_callback=progress_callback
+            )
             
             # Check if processing should stop
             if self.queue.should_stop:

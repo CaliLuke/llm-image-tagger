@@ -93,14 +93,21 @@ class ImageTask:
 class ProcessingQueue:
     """Queue for processing images."""
     
-    def __init__(self):
-        """Initialize a new processing queue."""
+    def __init__(self, persistence=None):
+        """
+        Initialize a new processing queue.
+        
+        Args:
+            persistence: Optional queue persistence handler
+        """
         self.queue: List[ImageTask] = []
         self.current_task: Optional[ImageTask] = None
         self.is_processing: bool = False
         self.should_stop: bool = False
         self.progress: Dict[str, float] = {}
         self.history: List[ImageTask] = []
+        self.persistence = persistence
+        self.auto_save_enabled = persistence is not None
     
     def add_task(self, image_path: str) -> ImageTask:
         """
@@ -115,6 +122,7 @@ class ProcessingQueue:
         task = ImageTask(image_path)
         self.queue.append(task)
         logger.info(f"Added task to queue: {image_path}")
+        self._auto_save()
         return task
     
     def get_next_task(self) -> Optional[ImageTask]:
@@ -130,6 +138,7 @@ class ProcessingQueue:
         
         task = self.queue.pop(0)
         self.current_task = task
+        self._auto_save()
         return task
     
     def start_processing(self) -> None:
@@ -137,11 +146,13 @@ class ProcessingQueue:
         self.is_processing = True
         self.should_stop = False
         logger.info("Started processing queue")
+        self._auto_save()
     
     def stop_processing(self) -> None:
         """Stop processing the queue."""
         self.should_stop = True
         logger.info("Stopping queue processing")
+        self._auto_save()
     
     def finish_current_task(self, success: bool, result: Optional[Dict] = None, error: Optional[str] = None) -> None:
         """
@@ -162,6 +173,7 @@ class ProcessingQueue:
         
         self.history.append(self.current_task)
         self.current_task = None
+        self._auto_save()
     
     def interrupt_current_task(self) -> None:
         """Interrupt the current task."""
@@ -171,11 +183,13 @@ class ProcessingQueue:
         self.current_task.interrupt()
         self.history.append(self.current_task)
         self.current_task = None
+        self._auto_save()
     
     def clear_queue(self) -> None:
         """Clear the queue."""
         self.queue = []
         logger.info("Cleared queue")
+        self._auto_save()
     
     def get_status(self) -> Dict:
         """
@@ -202,4 +216,42 @@ class ProcessingQueue:
         status = self.get_status()
         status["queue"] = [task.to_dict() for task in self.queue]
         status["history"] = [task.to_dict() for task in self.history]
-        return status 
+        return status
+    
+    def _auto_save(self) -> None:
+        """Save the queue state if auto-save is enabled."""
+        if self.auto_save_enabled and self.persistence:
+            self.persistence.save_queue(self)
+    
+    def save(self) -> bool:
+        """
+        Save the queue state.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if self.persistence:
+            return self.persistence.save_queue(self)
+        return False
+    
+    @classmethod
+    def load(cls, persistence):
+        """
+        Load the queue state.
+        
+        Args:
+            persistence: Queue persistence handler
+            
+        Returns:
+            The loaded queue, or a new queue if loading failed
+        """
+        if persistence:
+            loaded_queue = persistence.load_queue()
+            if loaded_queue:
+                # Transfer the persistence handler to the loaded queue
+                loaded_queue.persistence = persistence
+                loaded_queue.auto_save_enabled = True
+                return loaded_queue
+        
+        # If loading failed or no persistence handler, create a new queue
+        return cls(persistence=persistence) 

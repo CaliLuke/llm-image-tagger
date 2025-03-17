@@ -1,0 +1,54 @@
+{
+  "is_processing": false,
+  "should_stop": false,
+  "queue": [],
+  "current_task": null,
+  "history": [
+    {
+      "image_path": "2014-05-16_16-28-16.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: 2014-05-16_16-28-16.png",
+      "created_at": 1742201140.0426161,
+      "started_at": 1742201170.339453,
+      "completed_at": 1742201170.339669
+    },
+    {
+      "image_path": "2014-05-19_14-55-52.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: 2014-05-19_14-55-52.png",
+      "created_at": 1742201218.702359,
+      "started_at": 1742201236.898853,
+      "completed_at": 1742201236.899061
+    },
+    {
+      "image_path": "/Volumes/screenshots/Datapad/2014-05-19_14-55-52.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "'ImageText' object has no attribute 'text'",
+      "created_at": 1742201297.663114,
+      "started_at": 1742201319.440491,
+      "completed_at": 1742201358.200346
+    },
+    {
+      "image_path": "2014-05-16_16-28-16.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: 2014-05-16_16-28-16.png",
+      "created_at": 1742201524.793227,
+      "started_at": 1742201543.352134,
+      "completed_at": 1742201543.3523588
+    },
+    {
+      "image_path": "/Volumes/screenshots/Datapad/2014-05-16_16-28-16.png",
+      "status": "completed",
+      "progress": 1.0,
+      "error": null,
+      "created_at": 1742201797.321342,
+      "started_at": 1742201807.432387,
+      "completed_at": 1742201843.691016
+    }
+  ],
+  "saved_at": 1742201843.691265
+}

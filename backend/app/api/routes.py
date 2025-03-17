@@ -20,6 +20,7 @@ from ..services.image_processor import ImageProcessor, update_image_metadata
 from ..services.vector_store import VectorStore
 from ..services.processing_queue import ProcessingQueue
 from ..services.queue_processor import QueueProcessor
+from ..services.queue_persistence import QueuePersistence
 from ..utils.helpers import (
     load_or_create_metadata, 
     create_image_info
@@ -36,6 +37,7 @@ router.is_processing: bool = False
 router.should_stop_processing: bool = False
 router.current_task = None  # Store the current background task
 router.processing_queue: Optional[ProcessingQueue] = None
+router.queue_persistence: Optional[QueuePersistence] = None
 
 def get_vector_store() -> VectorStore:
     """
@@ -143,8 +145,16 @@ async def get_images(request: FolderRequest):
         vector_store_path = folder_path / ".vectordb"
         router.vector_store = VectorStore(persist_directory=str(vector_store_path))
         
-        # Initialize processing queue
-        router.processing_queue = ProcessingQueue()
+        # Initialize queue persistence in the data directory
+        data_dir = Path("/Users/luca/Documents/Code/llm-image-tagger/data")
+        if not data_dir.exists():
+            data_dir.mkdir(parents=True, exist_ok=True)
+        router.queue_persistence = QueuePersistence(data_dir)
+        logger.info(f"Initialized queue persistence at {data_dir}")
+        
+        # Initialize processing queue with persistence
+        # Try to load existing queue state first
+        router.processing_queue = ProcessingQueue.load(router.queue_persistence)
         logger.info("Initialized processing queue")
         
         metadata = load_or_create_metadata(folder_path)
