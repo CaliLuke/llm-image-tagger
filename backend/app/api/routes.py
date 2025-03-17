@@ -265,10 +265,80 @@ async def refresh_images():
 async def process_image(
     request: ProcessImageRequest,
     background_tasks: BackgroundTasks,
-    vector_store: VectorStore = Depends(get_vector_store)
+    vector_store: VectorStore = Depends(get_vector_store),
+    use_queue: bool = False
 ):
     """
     Process a single image.
+    
+    Args:
+        request: ProcessImageRequest object
+        background_tasks: BackgroundTasks for async processing
+        vector_store: VectorStore instance
+        use_queue: Whether to use the queue system
+        
+    Returns:
+        ProcessResponse object
+        
+    Raises:
+        HTTPException: If there is an error processing the image
+    """
+    if use_queue:
+        return await process_image_with_queue(request, background_tasks)
+    else:
+        return await process_image_legacy(request, background_tasks, vector_store)
+
+async def process_image_with_queue(
+    request: ProcessImageRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Process a single image using the queue system.
+    
+    Args:
+        request: ProcessImageRequest object
+        background_tasks: BackgroundTasks for async processing
+        
+    Returns:
+        ProcessResponse object
+        
+    Raises:
+        HTTPException: If there is an error processing the image
+    """
+    if not router.processing_queue:
+        raise HTTPException(status_code=400, detail="Queue not initialized")
+    
+    logger.info(f"Processing image with queue: {request.image_path}")
+    
+    # Add the image to the queue
+    task = router.processing_queue.add_task(request.image_path)
+    
+    # Start processing the queue if it's not already processing
+    if not router.processing_queue.is_processing:
+        processor = QueueProcessor(router.processing_queue)
+        await processor.process_queue(background_tasks)
+    
+    # Create initial ImageInfo object
+    image_info = create_image_info(request.image_path, {request.image_path: {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": False
+    }})
+    
+    return {
+        "success": True,
+        "message": "Image added to processing queue",
+        "image": image_info
+    }
+
+async def process_image_legacy(
+    request: ProcessImageRequest,
+    background_tasks: BackgroundTasks,
+    vector_store: VectorStore
+):
+    """
+    Process a single image using the legacy system.
     
     Args:
         request: ProcessImageRequest object
@@ -282,7 +352,7 @@ async def process_image(
         HTTPException: If there is an error processing the image
     """
     # Check if processing should be stopped before we even start
-    logger.info(f"process_image called with should_stop_processing={router.should_stop_processing}")
+    logger.info(f"process_image_legacy called with should_stop_processing={router.should_stop_processing}")
     if router.should_stop_processing:
         logger.info("Processing already stopped before starting (should_stop_processing=True)")
         return {

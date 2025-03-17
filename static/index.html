@@ -47,6 +47,11 @@
                     <a href="/docs" target="_blank" class="text-blue-600 hover:underline">Swagger UI</a> | 
                     <a href="/redoc" target="_blank" class="text-blue-600 hover:underline">ReDoc</a>
                 </p>
+                <!-- Add queue feature toggle (hidden by default) -->
+                <div class="mt-2 flex items-center gap-2">
+                    <input type="checkbox" id="useQueueToggle" v-model="useQueue" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                    <label for="useQueueToggle" class="text-xs text-gray-600">Use Queue Processing (Experimental)</label>
+                </div>
             </div>
         </div>
 
@@ -98,7 +103,60 @@
                     </div>
                 </div>
                 <div v-if="failedImages.length" class="text-sm text-red-500">
-                    Failed to process {{ failedImages.length }} images
+                    Failed: {{ failedImages.join(', ') }}
+                </div>
+            </div>
+            
+            <!-- Queue Status Display (shown when queue processing is enabled) -->
+            <div v-if="useQueue" class="max-w-2xl mx-auto my-4 p-4 bg-gray-100 rounded-lg">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-sm font-medium text-gray-700">Queue Status</h3>
+                    <button @click="refreshQueueStatus" 
+                            class="text-xs text-blue-600 hover:text-blue-800">
+                        Refresh
+                    </button>
+                </div>
+                <div v-if="queueStatus" class="text-xs text-gray-600 space-y-1">
+                    <div class="flex justify-between">
+                        <span>Status:</span>
+                        <span :class="queueStatus.is_processing ? 'text-green-600' : 'text-gray-600'">
+                            {{ queueStatus.is_processing ? 'Processing' : 'Idle' }}
+                        </span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Queue Length:</span>
+                        <span>{{ queueStatus.queue_length }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Processed:</span>
+                        <span>{{ queueStatus.history_length }}</span>
+                    </div>
+                    <div v-if="queueStatus.current_task" class="flex justify-between">
+                        <span>Current Task:</span>
+                        <span>{{ queueStatus.current_task.image_path.split('/').pop() }}</span>
+                    </div>
+                </div>
+                <div v-else class="text-xs text-gray-500 italic">
+                    Queue status not available
+                </div>
+                <div class="flex gap-2 mt-3">
+                    <button @click="clearQueue" 
+                            class="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded"
+                            :disabled="processingAll">
+                        Clear Queue
+                    </button>
+                    <button v-if="!queueStatus?.is_processing" 
+                            @click="startQueueProcessing" 
+                            class="text-xs px-2 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded"
+                            :disabled="processingAll || (queueStatus?.queue_length === 0)">
+                        Start Processing
+                    </button>
+                    <button v-else 
+                            @click="stopQueueProcessing" 
+                            class="text-xs px-2 py-1 bg-red-600 text-white hover:bg-red-700 rounded"
+                            :disabled="!queueStatus?.is_processing">
+                        Stop Processing
+                    </button>
                 </div>
             </div>
 
@@ -229,7 +287,7 @@
     </div>
 
     <script>
-        const { createApp, ref, computed } = Vue
+        const { createApp, ref, computed, onMounted, watch } = Vue
 
         createApp({
             setup() {
@@ -248,6 +306,11 @@
                 const folderOpened = ref(false)
                 const isLoading = ref(false)
                 const loadingStatus = ref('')
+                const useQueue = ref(false)
+                const showConfirmDialog = ref(false)
+                const confirmAction = ref(null)
+                const confirmMessage = ref('')
+                const queueStatus = ref(null)
                 
                 const openFolder = async () => {
                     if (!folderPath.value) {
@@ -421,55 +484,41 @@
                 }
 
                 const processImage = async (image) => {
+                    // Set processing state
+                    image.processing = true;
+                    
                     try {
-                        // Log button click to server
-                        await fetch('/log-action', {
+                        // Use queue-based or legacy processing based on feature flag
+                        const url = useQueue.value ? 
+                            `/process-image?use_queue=true` : 
+                            `/process-image`;
+                            
+                        const response = await fetch(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'BUTTON_CLICK', button: 'Process Image', image: image.path })
+                            body: JSON.stringify({ image_path: image.path })
                         });
-
-                        // Set processing state
-                        image.processing = true
-
-                        const response = await fetch('/process-image', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                image_path: image.path  // Send the full path, not just the name
-                            })
-                        })
-
+                        
                         if (!response.ok) {
-                            throw new Error('Failed to process image')
-                        }
-
-                        const data = await response.json()
-                        
-                        if (!data.success) {
-                            console.log('Process image failed:', data.message);
-                            throw new Error(data.message)
+                            const errorData = await response.json();
+                            console.log('Image processing failed:', errorData);
+                            throw new Error(errorData.detail || 'Failed to process image');
                         }
                         
-                        // Update the image with new data
+                        const data = await response.json();
+                        
+                        // Update image with new data
                         if (data.image) {
-                            Object.assign(image, {
-                                description: data.image.description,
-                                tags: data.image.tags,
-                                textContent: data.image.text_content,
-                                is_processed: data.image.is_processed
-                            })
+                            Object.assign(image, data.image);
                         }
                         
-                        return data
+                        return data;
                     } catch (err) {
-                        console.error('Error processing image:', err)
-                        throw err
+                        console.error('Error processing image:', err);
+                        throw err;
                     } finally {
                         // Clear processing state
-                        image.processing = false
+                        image.processing = false;
                     }
                 }
 
@@ -480,23 +529,23 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
                             action: 'BUTTON_CLICK', 
-                            button: processingAll.value ? 'Stop Processing' : 'Process All' 
+                            button: processingAll.value ? 'Stop Processing' : 'Process All',
+                            useQueue: useQueue.value
                         })
                     });
-                    
-                    // If already processing, stop the processing
+
+                    // If already processing, stop it
                     if (processingAll.value) {
                         try {
-                            // Call stop-processing endpoint
-                            const stopResponse = await fetch('/stop-processing', {
+                            console.log('Attempting to stop processing...');
+                            const response = await fetch('/stop-processing', {
                                 method: 'POST'
                             });
                             
-                            if (!stopResponse.ok) {
+                            if (!response.ok) {
                                 throw new Error('Failed to stop processing');
                             }
                             
-                            // Reset UI state immediately
                             processingAll.value = false;
                             return;
                         } catch (err) {
@@ -537,6 +586,107 @@
                     totalToProcess.value = unprocessedImages.length;
                     failedImages.value = [];
 
+                    if (useQueue.value) {
+                        await processAllImagesWithQueue(unprocessedImages);
+                    } else {
+                        await processAllImagesLegacy(unprocessedImages);
+                    }
+                }
+
+                const processAllImagesWithQueue = async (unprocessedImages) => {
+                    try {
+                        console.log(`Adding ${unprocessedImages.length} images to queue...`);
+                        
+                        // Add all images to the queue
+                        for (const image of unprocessedImages) {
+                            try {
+                                const response = await fetch('/queue/add', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ image_path: image.path })
+                                });
+                                
+                                if (!response.ok) {
+                                    const errorData = await response.json();
+                                    throw new Error(errorData.detail || 'Failed to add image to queue');
+                                }
+                            } catch (err) {
+                                console.error(`Failed to add ${image.name} to queue:`, err);
+                                failedImages.value.push(image.name);
+                            }
+                        }
+                        
+                        // Start processing the queue
+                        const startResponse = await fetch('/queue/process', {
+                            method: 'POST'
+                        });
+                        
+                        if (!startResponse.ok) {
+                            throw new Error('Failed to start queue processing');
+                        }
+                        
+                        console.log('Queue processing started');
+                        
+                        // Poll for queue status until complete
+                        const pollInterval = setInterval(async () => {
+                            try {
+                                if (!processingAll.value) {
+                                    // User stopped processing
+                                    clearInterval(pollInterval);
+                                    await fetch('/queue/stop', { method: 'POST' });
+                                    return;
+                                }
+                                
+                                const statusResponse = await fetch('/queue/status?detailed=true');
+                                if (!statusResponse.ok) {
+                                    throw new Error('Failed to get queue status');
+                                }
+                                
+                                const status = await statusResponse.json();
+                                
+                                // Update progress
+                                processedCount.value = status.history_length;
+                                
+                                if (status.current_task) {
+                                    currentImageName.value = status.current_task.image_path.split('/').pop();
+                                }
+                                
+                                // Check if processing is complete
+                                if (!status.is_processing && status.queue_length === 0) {
+                                    clearInterval(pollInterval);
+                                    processingAll.value = false;
+                                    
+                                    // Count failed images
+                                    const failedCount = status.history.filter(task => task.status === 'failed').length;
+                                    if (failedCount > 0) {
+                                        console.log(`Processing complete with ${failedCount} failures`);
+                                        // Add failed image names to failedImages
+                                        status.history.forEach(task => {
+                                            if (task.status === 'failed') {
+                                                const imageName = task.image_path.split('/').pop();
+                                                if (!failedImages.value.includes(imageName)) {
+                                                    failedImages.value.push(imageName);
+                                                }
+                                            }
+                                        });
+                                    } else {
+                                        console.log('All images processed successfully!');
+                                    }
+                                    
+                                    // Refresh images to show updated status
+                                    await refreshImages();
+                                }
+                            } catch (err) {
+                                console.error('Error polling queue status:', err);
+                            }
+                        }, 1000);
+                    } catch (err) {
+                        console.error('Error in queue processing:', err);
+                        processingAll.value = false;
+                    }
+                }
+
+                const processAllImagesLegacy = async (unprocessedImages) => {
                     try {
                         for (const image of unprocessedImages) {
                             if (!processingAll.value) {
@@ -691,6 +841,92 @@
                     )
                 })
 
+                // Queue-related functions
+                const refreshQueueStatus = async () => {
+                    try {
+                        const response = await fetch('/queue/status?detailed=true');
+                        if (!response.ok) {
+                            throw new Error('Failed to get queue status');
+                        }
+                        
+                        queueStatus.value = await response.json();
+                    } catch (err) {
+                        console.error('Error getting queue status:', err);
+                    }
+                }
+                
+                const clearQueue = async () => {
+                    try {
+                        const response = await fetch('/queue/clear', {
+                            method: 'POST'
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Failed to clear queue');
+                        }
+                        
+                        await refreshQueueStatus();
+                    } catch (err) {
+                        console.error('Error clearing queue:', err);
+                    }
+                }
+                
+                const startQueueProcessing = async () => {
+                    try {
+                        const response = await fetch('/queue/process', {
+                            method: 'POST'
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Failed to start queue processing');
+                        }
+                        
+                        await refreshQueueStatus();
+                    } catch (err) {
+                        console.error('Error starting queue processing:', err);
+                    }
+                }
+                
+                const stopQueueProcessing = async () => {
+                    try {
+                        const response = await fetch('/queue/stop', {
+                            method: 'POST'
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Failed to stop queue processing');
+                        }
+                        
+                        await refreshQueueStatus();
+                    } catch (err) {
+                        console.error('Error stopping queue processing:', err);
+                    }
+                }
+                
+                // Watch for changes to useQueue and refresh queue status when enabled
+                watch(useQueue, async (newValue) => {
+                    if (newValue) {
+                        await refreshQueueStatus();
+                    }
+                });
+                
+                // Refresh queue status periodically when enabled
+                onMounted(() => {
+                    if (useQueue.value) {
+                        refreshQueueStatus();
+                    }
+                    
+                    // Set up interval to refresh queue status every 5 seconds when queue processing is enabled
+                    const interval = setInterval(() => {
+                        if (useQueue.value) {
+                            refreshQueueStatus();
+                        }
+                    }, 5000);
+                    
+                    // Clean up interval when component is unmounted
+                    return () => clearInterval(interval);
+                });
+
                 return {
                     images,
                     searchQuery,
@@ -717,7 +953,11 @@
                     isProcessed,
                     folderOpened,
                     isLoading,
-                    loadingStatus
+                    loadingStatus,
+                    useQueue,
+                    showConfirmDialog,
+                    confirmAction,
+                    confirmMessage
                 }
             }
         }).mount('#app')
