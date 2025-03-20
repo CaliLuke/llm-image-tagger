@@ -2,7 +2,11 @@
 
 This project is an image tagging and searching application that leverages the power of open-source local multimodal LLM like Llama 3.2 Vision and vector database like ChromaDB to provide a seamless image management experience.
 
-This project has an accompanying blog post [here](https://medium.com/design-bootcamp/local-ai-vision-for-your-photos-build-ai-image-tagger-with-llama-vision-and-chromadb-e3b1e0eeac43).
+This project is an extensive rewrite of "llama vision image tagger" by Guodong Zhao, where I aim to
+
+ - make the llm backend selectable to take advantage of more recent models like Gemma3 vision
+ - improve the usability by making the processing queue asynchronous and add file system navigation and bookmarking
+ - add the ability to save tags and descriptions to the images' metadata to supplement local search engines and photo organizers that don't have llm based tagging
 
 ## Overview
 
@@ -18,6 +22,21 @@ The application provides an intuitive way to organize and search through your im
 5. Store all metadata in a vector database for efficient retrieval
 6. Enable natural language search using both full-text and vector search
 7. Provide a modern web interface for browsing and managing images
+
+# Image tagger
+
+## What the app does
+
+- On first open, it will prompt users to choose a folder.(Done)
+- It will scan the folder and subfolder for images (png/jpg/jpeg) and initialize an index record (if not initialized in this folder, we can probably use a JSON as initialization record? This can also be used for tracking new/deleted images.)(Done)
+- It will then create taggings of the images with Llama3.2 Vision with Ollama when "Start Tagging". It will create tags of elements/styles, a short description of the image, text within the images. The image path, tags, description, text within the images will be saved to a vector database for easier retrieval later.(Done)
+- Users can then query the images with natural language. During querying, it will use full-text search and vector search to find the most relevant images.(Done)
+- Users can browse the images on the UI, on click thumbnail, modal opens with image and its tags, description, and text within the image.(Done)
+
+## Project Structure Notes
+
+- requirements.txt should ONLY exist in the root directory, not in backend/
+- All dependencies should be listed in the root requirements.txt file
 
 ## Features
 
@@ -56,6 +75,10 @@ The application provides an intuitive way to organize and search through your im
 ## Technical Architecture
 
 ### Frontend
+
+- Local server web page with Tailwind CSS, Vue3, and HTML.
+    - Tailwind CSS CDN:   <script src="https://cdn.tailwindcss.com"></script>
+    - Vue3 CDN: <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
 - Built with Vue3 and Tailwind CSS
 - Responsive and modern UI design
@@ -112,7 +135,7 @@ llm-image-tagger/
 1. **Clone the repository:**
 
     ```bash
-    git clone https://github.com/Troyanovsky/llama-vision-image-tagger
+    git clone https://github.com/CaliLuke/llm-image-tagger
     cd llama-vision-tagger
     ```
 
@@ -275,10 +298,3 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-
-## Related Projects
-
-- [Ollama](https://github.com/ollama/ollama) - Local LLM server
-- [ChromaDB](https://github.com/chroma-core/chroma) - Vector database
-- [Local-LLM-Comparison-Colab-UI](https://github.com/Troyanovsky/Local-LLM-Comparison-Colab-UI) - Compare local LLMs
-- [Building-with-GenAI](https://github.com/Troyanovsky/Building-with-GenAI) - GenAI project tutorials
