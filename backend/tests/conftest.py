@@ -28,23 +28,14 @@ def setup_test_environment():
     """Set up test environment before each test."""
     logger.info("Setting up test environment")
     
-    # Create a temporary directory for vector store
-    temp_dir = tempfile.mkdtemp()
-    logger.debug(f"Created temporary directory at {temp_dir}")
+    # Create a mock vector store instead of a real one
+    mock_vector_store = MagicMock()
+    mock_vector_store.add_or_update_image = AsyncMock()
+    mock_vector_store.search_images = AsyncMock(return_value=[])
     
-    # Create data directory
-    data_dir = Path(temp_dir) / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    logger.debug(f"Created data directory at {data_dir}")
-    
-    # Create vector store directory
-    vector_dir = data_dir / "vectordb"
-    vector_dir.mkdir(parents=True, exist_ok=True)
-    logger.debug(f"Created vector store directory at {vector_dir}")
-    
-    # Initialize router state with test configuration
-    logger.debug("Initializing router state")
-    router.vector_store = VectorStore(persist_directory=str(vector_dir))
+    # Initialize router state with mock configuration
+    logger.debug("Initializing router state with mock vector store")
+    router.vector_store = mock_vector_store
     router.processing_queue = ProcessingQueue()
     router.queue_persistence = None  # No persistence needed for tests
     
@@ -52,8 +43,6 @@ def setup_test_environment():
     
     # Clean up
     logger.info("Cleaning up test environment")
-    shutil.rmtree(temp_dir)
-    logger.debug(f"Removed temporary directory at {temp_dir}")
     
     # Reset router state
     logger.debug("Resetting router state")

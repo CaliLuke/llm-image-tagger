@@ -404,6 +404,31 @@ async def process_image(
                 # Process the image
                 async for update in image_processor.process_image(image_path):
                     update["success"] = True
+                    
+                    # If this is the final update with metadata, update storage
+                    if "image" in update:
+                        # Get the relative path for the image
+                        rel_path = str(image_path.relative_to(Path(get_current_folder())))
+                        
+                        # Load current metadata
+                        metadata = load_or_create_metadata(Path(get_current_folder()))
+                        
+                        # Update metadata for this image
+                        metadata[rel_path] = update["image"]
+                        
+                        # Save updated metadata to file
+                        project_root = Path(__file__).parent.parent.parent.parent
+                        data_dir = project_root / "data"
+                        data_dir.mkdir(exist_ok=True)
+                        folder_hash = hashlib.md5(str(get_current_folder()).encode()).hexdigest()
+                        metadata_file = data_dir / f"metadata_{folder_hash}.json"
+                        
+                        with open(metadata_file, 'w') as f:
+                            json.dump(metadata, f, indent=4)
+                        
+                        # Update the vector store
+                        await router.vector_store.add_or_update_image(rel_path, update["image"])
+                        
                     yield json.dumps(update) + "\n"
                 
             except Exception as e:
@@ -590,7 +615,7 @@ async def update_metadata(
         
         # Update vector store
         logger.info("Updating vector store")
-        vector_store.add_or_update_image(request.path, all_metadata[request.path])
+        await vector_store.add_or_update_image(request.path, all_metadata[request.path])
         logger.info("Successfully updated vector store")
         
         # Create ImageInfo object

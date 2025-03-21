@@ -214,7 +214,7 @@ class QueueProcessor:
             logger.error(f"Error processing task {task.image_path}: {str(e)}")
             logger.error(f"Error type: {type(e)}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
-            self.queue.finish_current_task(False, error=str(e))
+            self.queue.finish_current_task(False, str(e))
     
     async def stop_processing(self) -> Dict[str, Any]:
         """

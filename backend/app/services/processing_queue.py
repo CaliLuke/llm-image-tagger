@@ -11,7 +11,7 @@ This module provides:
 
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Callable, Any, Union
 import time
 import json
 import traceback
@@ -325,18 +325,28 @@ class ProcessingQueue:
         self.should_stop = True
         logger.debug("Queue stop flag set")
     
-    def finish_current_task(self) -> None:
+    def finish_current_task(self, success: bool, metadata_or_error: Union[Dict, str] = None) -> None:
         """
         Finish the current task and move it to history.
-        
+
         This method:
-        1. Moves current task to history
-        2. Clears current task reference
-        3. Triggers auto-save if enabled
-        4. Logs the task completion
+        1. Updates task status based on success
+        2. Stores metadata or error message
+        3. Moves current task to history
+        4. Clears current task reference
+        5. Triggers auto-save if enabled
+        6. Logs the task completion
+
+        Args:
+            success (bool): Whether the task completed successfully
+            metadata_or_error (Union[Dict, str], optional): Task metadata if successful, error message if failed
         """
         if self.current_task:
             logger.info(f"Finishing current task: {self.current_task.image_path}")
+            if success:
+                self.current_task.complete(metadata_or_error)
+            else:
+                self.current_task.fail(metadata_or_error)
             self.history.append(self.current_task)
             self.current_task = None
             self._auto_save()
@@ -445,25 +455,33 @@ class ProcessingQueue:
             self.persistence.save_queue(self)
             logger.debug("Queue state auto-saved")
     
-    def save(self) -> None:
+    def save(self) -> bool:
         """
         Save queue state to persistent storage.
-        
+
         This method:
         1. Saves queue state if persistence is available
         2. Logs the save operation
+
+        Returns:
+            bool: True if successful, False otherwise
         """
         if self.persistence:
             logger.info("Saving queue state")
-            self.persistence.save_queue(self)
-            logger.info("Queue state saved")
+            success = self.persistence.save_queue(self)
+            if success:
+                logger.info("Queue state saved")
+            else:
+                logger.error("Failed to save queue state")
+            return success
         else:
             logger.warning("Cannot save queue state: No persistence handler configured")
+            return False
     
     def load(self) -> None:
         """
         Load queue state from persistent storage.
-        
+
         This method:
         1. Loads queue state if persistence is available
         2. Restores queue and history
@@ -480,4 +498,57 @@ class ProcessingQueue:
             else:
                 logger.warning("No saved queue state found")
         else:
-            logger.warning("Cannot load queue state: No persistence handler configured") 
+            logger.warning("Cannot load queue state: No persistence handler configured")
+
+    @classmethod
+    def load(cls, persistence=None):
+        """Load queue state from persistence.
+
+        Args:
+            persistence (QueuePersistence, optional): Persistence handler. Defaults to None.
+
+        Returns:
+            ProcessingQueue: A new queue instance with loaded state or empty if no state found.
+        """
+        queue = cls(persistence=persistence)
+        if persistence:
+            try:
+                state = persistence.load_queue_state()
+                if state:
+                    # Use _create_task_from_dict to properly restore tasks
+                    queue.queue = [persistence._create_task_from_dict(task) for task in state.get('queue', [])]
+                    queue.queue = [task for task in queue.queue if task is not None]  # Filter out any failed task creations
+                    
+                    queue.history = [persistence._create_task_from_dict(task) for task in state.get('history', [])]
+                    queue.history = [task for task in queue.history if task is not None]  # Filter out any failed task creations
+                    
+                    # Handle current task - if it was processing, mark as interrupted and move to history
+                    if state.get('current_task'):
+                        current_task = persistence._create_task_from_dict(state['current_task'])
+                        if current_task and current_task.status == TaskStatus.PROCESSING:
+                            current_task.interrupt()
+                            queue.history.append(current_task)
+                            queue.current_task = None
+                        else:
+                            # If task wasn't processing, add it back to the front of the queue
+                            if current_task:
+                                queue.queue.insert(0, current_task)
+                            queue.current_task = None
+                    else:
+                        queue.current_task = None
+                        
+                    # Always start with processing disabled, regardless of saved state
+                    queue.is_processing = False
+                    queue.should_stop = False
+                    
+                    logger.info("Queue state loaded")
+                    logger.debug(f"Loaded {len(queue.queue)} tasks in queue and {len(queue.history)} in history")
+                else:
+                    logger.warning("No saved queue state found")
+            except Exception as e:
+                logger.error(f"Error loading queue state: {str(e)}")
+                logger.debug(traceback.format_exc())
+        else:
+            logger.warning("Cannot load queue state: No persistence handler configured")
+        
+        return queue 

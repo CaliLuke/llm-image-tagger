@@ -11,6 +11,7 @@ import traceback
 from backend.app.services.image_processor import ImageProcessor
 from backend.app.models.schemas import ImageDescription, ImageTags, ImageText
 from backend.app.services.vector_store import VectorStore
+from .test_image_processor_progress import AsyncResponseGenerator
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -21,24 +22,30 @@ def image_processor():
     """Create an ImageProcessor instance for testing."""
     logger.debug("Setting up image_processor fixture")
     try:
-        with patch('backend.app.services.image_processor.ollama') as mock_ollama:
+        with patch('backend.app.services.image_processor.ollama.AsyncClient') as mock_client_class:
             logger.debug("Mocking Ollama client")
+            
+            # Create the mock client first
+            mock_client = AsyncMock()
+            mock_client_class.return_value = mock_client
             
             # Setup mock responses for different query types
             async def mock_chat(**kwargs):
                 format_props = kwargs.get('format', {}).get('properties', {})
                 
                 if 'description' in format_props:
-                    return {'message': {'content': {'description': 'A test description'}}}
+                    response = {'message': {'content': {'description': 'A test description'}}}
                 elif 'tags' in format_props:
-                    return {'message': {'content': {'tags': ['test', 'image']}}}
+                    response = {'message': {'content': {'tags': ['test', 'image']}}}
                 elif 'has_text' in format_props:
-                    return {'message': {'content': {'has_text': False, 'text_content': ''}}}
+                    response = {'message': {'content': {'has_text': False, 'text_content': ''}}}
                 else:
-                    return {'message': {'content': {}}}
+                    response = {'message': {'content': {}}}
+                
+                return AsyncResponseGenerator([response])
             
-            # Create the mock client
-            mock_ollama.chat = AsyncMock(side_effect=mock_chat)
+            # Attach the mock chat method
+            mock_client.chat = mock_chat
             
             processor = ImageProcessor()
             processor.model_name = 'test-model'

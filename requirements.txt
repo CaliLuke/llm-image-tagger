@@ -17,3 +17,4 @@ urllib3<2.0.0  # Pin urllib3 to v1.x to avoid SSL warnings
 pillow>=10.2.0  # For image processing
 selenium>=4.18.1  # For frontend testing
 psutil>=5.9.0  # For process management
+jsonschema==4.21.1

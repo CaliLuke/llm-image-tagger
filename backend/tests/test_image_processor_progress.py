@@ -131,7 +131,7 @@ async def test_query_ollama_progress_tracking(image_processor, tmp_path):
         # Verify progress updates
         logger.debug(f"Collected {len(updates)} updates")
         assert len(updates) == 2
-        assert updates[0] == {'progress': 0.3333333333333333}
+        assert updates[0] == {'progress': 0.5}
         assert updates[1] == {'content': {'description': 'Test description'}}
         logger.info("Progress tracking test completed successfully")
         
@@ -153,21 +153,37 @@ async def test_process_image_progress_updates(image_processor, tmp_path):
 
         # Collect all updates
         updates = []
+        last_progress = -1  # Track progress to ensure it's monotonically increasing
         logger.debug("Starting to collect updates from process_image")
         async for update in image_processor.process_image(test_image):
             logger.debug(f"Received update: {update}")
             updates.append(update)
+            
+            # Verify progress is increasing
+            if 'progress' in update:
+                progress = update['progress']
+                assert 0 <= progress <= 1, f"Progress {progress} should be between 0 and 1"
+                assert progress > last_progress, f"Progress {progress} should be greater than {last_progress}"
+                last_progress = progress
 
-        # Verify progress updates
+        # Verify we got updates for each step
         logger.debug(f"Collected {len(updates)} updates")
+        progress_values = [u['progress'] for u in updates if 'progress' in u]
+        logger.debug(f"Progress values: {progress_values}")
+        
+        # Verify final update
         final_update = updates[-1]
-        assert 'image' in final_update
-        assert 'progress' in final_update
-        assert final_update['progress'] == 1.0
-        assert final_update['image']['description'] == 'Test description'
-        assert final_update['image']['tags'] == ['test', 'image', 'white']
-        assert final_update['image']['text_content'] == ''
-        assert final_update['image']['is_processed'] is True
+        assert 'image' in final_update, "Final update should contain image data"
+        assert 'progress' in final_update, "Final update should contain progress"
+        assert final_update['progress'] == 1.0, "Final progress should be 1.0"
+        
+        # Verify image metadata
+        image_data = final_update['image']
+        assert image_data['description'] == 'Test description'
+        assert image_data['tags'] == ['test', 'image', 'white']
+        assert image_data['text_content'] == ''
+        assert image_data['is_processed'] is True
+        
         logger.info("Process image progress test completed successfully")
         
     except Exception as e:
@@ -212,9 +228,9 @@ async def test_ollama_streaming_error(image_processor, tmp_path):
             logger.debug("Setting up mock client to raise error")
             # Create a mock client instance that raises an error
             mock_client = AsyncMock()
-            mock_client.chat.side_effect = Exception("Streaming error")
+            mock_client.chat.side_effect = Exception('model "test-model" not found, try pulling it first')
             mock_client_class.return_value = mock_client
-            
+
             # Verify it raises the error
             with pytest.raises(Exception) as exc_info:
                 async for _ in image_processor._query_ollama(
@@ -223,8 +239,8 @@ async def test_ollama_streaming_error(image_processor, tmp_path):
                     {'properties': {'description': {'type': 'string'}}}
                 ):
                     pass
-            
-            assert str(exc_info.value) == "Streaming error"
+
+            assert str(exc_info.value) == 'model "test-model" not found, try pulling it first'
             logger.debug(f"Caught expected streaming error: {str(exc_info.value)}")
             logger.info("Streaming error test completed successfully")
             

@@ -19,9 +19,32 @@ import time
 from backend.app.models.schemas import ImageDescription, ImageTags, ImageText
 import hashlib
 import traceback
+import base64
+from PIL import Image
+import io
+import jsonschema
 
 # Configure logger with module name
 logger = logging.getLogger(__name__)
+
+class AsyncResponseGenerator:
+    """A class to simulate async iteration for streaming responses."""
+    def __init__(self, response_data):
+        self.response_data = response_data
+        self._index = 0
+        logger.debug(f"Initialized AsyncResponseGenerator with {len(response_data)} items")
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._index >= len(self.response_data):
+            logger.debug("AsyncResponseGenerator iteration complete")
+            raise StopAsyncIteration
+        item = self.response_data[self._index]
+        self._index += 1
+        logger.debug(f"Yielding item {self._index}/{len(self.response_data)}: {item}")
+        return item
 
 class ImageProcessor:
     """
@@ -345,27 +368,61 @@ class ImageProcessor:
                     'content': prompt,
                     'images': [image_path]
                 }],
-                'format': format_schema
+                'format': format_schema,
+                'stream': True  # Ensure streaming is enabled
             }
             
-            # Stream the response
-            async for response in ollama.chat(**request_data):
-                if 'message' in response:
-                    content = response['message'].get('content')
-                    if content:
-                        try:
-                            # Try to parse as JSON first
-                            parsed_content = json.loads(content)
-                            yield {'content': parsed_content}
-                        except json.JSONDecodeError:
-                            # If not JSON, yield as raw content
-                            yield {'content': content}
-                elif 'eval_count' in response and 'prompt_eval_count' in response:
-                    # Calculate progress
-                    progress = response['eval_count'] / response['prompt_eval_count']
-                    logger.debug(f"Query progress: {progress:.2%}")
-                    yield {'progress': progress}
-                    
+            # Get the response
+            client = ollama.AsyncClient()
+            response = await client.chat(**request_data)
+            
+            # Process the streaming response
+            accumulated_content = ""
+            if isinstance(response, dict):
+                # Single response
+                if 'message' in response and 'content' in response['message']:
+                    content = response['message']['content']
+                    try:
+                        parsed_content = json.loads(content) if isinstance(content, str) else content
+                        jsonschema.validate(parsed_content, format_schema)
+                        yield {'content': parsed_content}
+                    except (json.JSONDecodeError, jsonschema.ValidationError) as e:
+                        logger.error(f"Error parsing response content: {e}")
+                        raise ValueError(f"Invalid response format: {e}")
+            else:
+                # Streaming response
+                async for chunk in response:
+                    # Check for progress information
+                    if 'eval_count' in chunk and 'prompt_eval_count' in chunk:
+                        progress = chunk['eval_count'] / chunk['prompt_eval_count']
+                        yield {'progress': progress}
+                        continue
+
+                    # Accumulate content
+                    if 'message' in chunk and 'content' in chunk['message']:
+                        content = chunk['message']['content']
+                        if isinstance(content, dict):
+                            # If it's already a dict, validate and yield it
+                            try:
+                                jsonschema.validate(content, format_schema)
+                                yield {'content': content}
+                            except jsonschema.ValidationError as e:
+                                logger.error(f"Error validating response content: {e}")
+                                raise ValueError(f"Invalid response format: {e}")
+                        else:
+                            # If it's a string, accumulate it
+                            accumulated_content += str(content)
+
+                # Try to parse accumulated content if any
+                if accumulated_content:
+                    try:
+                        parsed_content = json.loads(accumulated_content)
+                        jsonschema.validate(parsed_content, format_schema)
+                        yield {'content': parsed_content}
+                    except (json.JSONDecodeError, jsonschema.ValidationError) as e:
+                        logger.error(f"Error parsing accumulated content: {e}")
+                        raise ValueError(f"Invalid accumulated content format: {e}")
+
         except Exception as e:
             logger.error(f"Error in Ollama query: {str(e)}")
             logger.error(f"Error type: {type(e)}")

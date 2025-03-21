@@ -11,7 +11,7 @@ import json
 import os
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union, Any
 import time
 
 from ..core.logging import logger
@@ -32,17 +32,17 @@ class QueuePersistence:
         queue_file (Path): Path to the queue state file
     """
     
-    def __init__(self, base_folder: Path):
+    def __init__(self, base_folder: Union[str, Path]):
         """
         Initialize queue persistence.
         
         Args:
-            base_folder (Path): Base folder for storing queue data
+            base_folder (Union[str, Path]): Base folder for storing queue data
         """
-        self.base_folder = base_folder
-        self.queue_file = base_folder / ".queue_state.json"
+        self.base_folder = Path(base_folder)
+        self.queue_file = self.base_folder / ".queue_state.json"
         self.ensure_folder_exists()
-        logger.info(f"Initialized QueuePersistence with base folder: {base_folder}")
+        logger.info(f"Initialized QueuePersistence with base folder: {self.base_folder}")
     
     def ensure_folder_exists(self) -> None:
         """
@@ -174,15 +174,24 @@ class QueuePersistence:
             Optional[ImageTask]: The created task, or None if creation failed
         """
         try:
+            # Create task with just the image path
             task = ImageTask(task_data["image_path"])
             
             # Restore task state
-            task.status = TaskStatus(task_data["status"])
-            task.progress = task_data["progress"]
-            task.error = task_data["error"]
-            task.created_at = task_data["created_at"]
-            task.started_at = task_data["started_at"]
-            task.completed_at = task_data["completed_at"]
+            if "status" in task_data:
+                task.status = TaskStatus(task_data["status"])
+            if "progress" in task_data:
+                task.progress = task_data["progress"]
+            if "error" in task_data:
+                task.error = task_data["error"]
+            if "result" in task_data:
+                task.result = task_data["result"]
+            if "created_at" in task_data:
+                task.created_at = task_data["created_at"]
+            if "started_at" in task_data:
+                task.started_at = task_data["started_at"]
+            if "completed_at" in task_data:
+                task.completed_at = task_data["completed_at"]
             
             logger.debug(f"Created task from dict: {task.image_path} with status {task.status}")
             return task
@@ -213,4 +222,43 @@ class QueuePersistence:
             logger.error(f"Error removing queue state file: {str(e)}")
             logger.error(f"Error type: {type(e)}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
-            return False 
+            return False
+
+    def save_queue_state(self, queue_state: Dict[str, Any]) -> bool:
+        """
+        Save queue state to disk.
+
+        Args:
+            queue_state (Dict[str, Any]): Queue state to save
+
+        Returns:
+            bool: True if save was successful, False otherwise
+        """
+        try:
+            with open(self.queue_file, 'w') as f:
+                json.dump(queue_state, f, indent=2)
+            logger.info(f"Queue state saved to {self.queue_file}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving queue state: {e}")
+            return False
+
+    def load_queue_state(self) -> Optional[Dict[str, Any]]:
+        """
+        Load queue state from disk.
+
+        Returns:
+            Optional[Dict[str, Any]]: Queue state if loaded successfully, None otherwise
+        """
+        try:
+            if not self.queue_file.exists():
+                logger.warning(f"No queue state file found at {self.queue_file}")
+                return None
+
+            with open(self.queue_file, 'r') as f:
+                queue_state = json.load(f)
+            logger.info(f"Queue state loaded from {self.queue_file}")
+            return queue_state
+        except Exception as e:
+            logger.error(f"Error loading queue state: {e}")
+            return None 
