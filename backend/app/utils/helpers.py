@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Dict, Set
 import json
 
-from ..core.config import settings
+from ..core.settings import settings
 from ..core.logging import logger
 from ..models.schemas import ImageInfo
 
@@ -60,12 +60,48 @@ def scan_folder_for_images(folder_path: Path) -> Dict[str, Dict]:
     """
     metadata = {}
     image_extensions = get_supported_extensions()
+    logger.info(f"Scanning folder {folder_path} for images with extensions: {image_extensions}")
     
     for file_path in folder_path.rglob("*"):
+        # Skip hidden files and system files
+        if file_path.name.startswith('.') or file_path.name.startswith('._'):
+            logger.debug(f"Skipping hidden/system file: {file_path}")
+            continue
+            
         if file_path.suffix.lower() in image_extensions:
-            rel_path = str(file_path.relative_to(folder_path))
-            metadata[rel_path] = initialize_image_metadata(rel_path)
+            try:
+                logger.debug(f"Validating image: {file_path}")
+                # Try to open and validate the image
+                from PIL import Image
+                with Image.open(file_path) as img:
+                    # Get image details
+                    format = img.format
+                    mode = img.mode
+                    size = img.size
+                    
+                    # Log image details
+                    logger.info(f"Found valid image: {file_path}")
+                    logger.info(f"Format: {format}, Mode: {mode}, Size: {size}")
+                    
+                    # Verify image data is valid
+                    img.verify()
+                    
+                    # For RGBA images, verify alpha channel
+                    if mode == 'RGBA':
+                        alpha = img.split()[3]
+                        if not any(alpha.getdata()):  # If alpha channel is completely transparent
+                            logger.warning(f"Image {file_path} has fully transparent alpha channel")
+                    
+                    # Add to metadata
+                    rel_path = str(file_path.relative_to(folder_path))
+                    metadata[rel_path] = initialize_image_metadata(rel_path)
+                    logger.debug(f"Added to metadata: {rel_path}")
+                    
+            except Exception as e:
+                logger.warning(f"Invalid or corrupted image {file_path}: {str(e)}", exc_info=True)
+                continue
     
+    logger.info(f"Found {len(metadata)} valid images in {folder_path}")
     return metadata
 
 def load_or_create_metadata(folder_path: Path) -> Dict[str, Dict]:

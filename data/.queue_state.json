@@ -1,54 +1,738 @@
 {
   "is_processing": false,
-  "should_stop": false,
+  "should_stop": true,
   "queue": [],
   "current_task": null,
   "history": [
     {
-      "image_path": "2014-05-16_16-28-16.png",
+      "image_path": "test_image_1.png",
       "status": "failed",
       "progress": 1.0,
-      "error": "Image not found: 2014-05-16_16-28-16.png",
-      "created_at": 1742201140.0426161,
-      "started_at": 1742201170.339453,
-      "completed_at": 1742201170.339669
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518516.0077372,
+      "started_at": 1742518516.009919,
+      "completed_at": 1742518516.010416
     },
     {
-      "image_path": "2014-05-19_14-55-52.png",
+      "image_path": "test_image_1.png",
       "status": "failed",
       "progress": 1.0,
-      "error": "Image not found: 2014-05-19_14-55-52.png",
-      "created_at": 1742201218.702359,
-      "started_at": 1742201236.898853,
-      "completed_at": 1742201236.899061
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518527.1491442,
+      "started_at": 1742518527.1544409,
+      "completed_at": 1742518527.154946
     },
     {
-      "image_path": "/Volumes/screenshots/Datapad/2014-05-19_14-55-52.png",
+      "image_path": "test_image_2.png",
       "status": "failed",
       "progress": 1.0,
-      "error": "'ImageText' object has no attribute 'text'",
-      "created_at": 1742201297.663114,
-      "started_at": 1742201319.440491,
-      "completed_at": 1742201358.200346
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518527.1507578,
+      "started_at": 1742518527.155682,
+      "completed_at": 1742518527.15611
     },
     {
-      "image_path": "2014-05-16_16-28-16.png",
+      "image_path": "test_image_1.png",
       "status": "failed",
       "progress": 1.0,
-      "error": "Image not found: 2014-05-16_16-28-16.png",
-      "created_at": 1742201524.793227,
-      "started_at": 1742201543.352134,
-      "completed_at": 1742201543.3523588
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518564.436835,
+      "started_at": 1742518564.43903,
+      "completed_at": 1742518564.439553
     },
     {
-      "image_path": "/Volumes/screenshots/Datapad/2014-05-16_16-28-16.png",
-      "status": "completed",
+      "image_path": "test_image_1.png",
+      "status": "failed",
       "progress": 1.0,
-      "error": null,
-      "created_at": 1742201797.321342,
-      "started_at": 1742201807.432387,
-      "completed_at": 1742201843.691016
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518564.574707,
+      "started_at": 1742518564.579502,
+      "completed_at": 1742518564.5799649
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518564.576052,
+      "started_at": 1742518564.5827289,
+      "completed_at": 1742518564.583252
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518589.362884,
+      "started_at": 1742518589.365582,
+      "completed_at": 1742518589.366264
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518589.452233,
+      "started_at": 1742518589.457401,
+      "completed_at": 1742518589.457879
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518589.453977,
+      "started_at": 1742518589.458735,
+      "completed_at": 1742518589.459201
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518671.7983239,
+      "started_at": 1742518671.8010519,
+      "completed_at": 1742518671.801814
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518671.872511,
+      "started_at": 1742518671.877357,
+      "completed_at": 1742518671.877871
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518671.874105,
+      "started_at": 1742518671.882693,
+      "completed_at": 1742518671.885391
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518746.320014,
+      "started_at": 1742518746.3238451,
+      "completed_at": 1742518746.325354
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518746.4347599,
+      "started_at": 1742518746.4431,
+      "completed_at": 1742518746.443685
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518746.436912,
+      "started_at": 1742518746.4446988,
+      "completed_at": 1742518746.44527
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518870.230743,
+      "started_at": 1742518870.23339,
+      "completed_at": 1742518870.2340858
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518870.323536,
+      "started_at": 1742518870.327583,
+      "completed_at": 1742518870.328187
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518870.324715,
+      "started_at": 1742518870.329174,
+      "completed_at": 1742518870.3298602
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518904.936434,
+      "started_at": 1742518904.939344,
+      "completed_at": 1742518904.939989
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518905.0308712,
+      "started_at": 1742518905.03522,
+      "completed_at": 1742518905.036109
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518905.0320058,
+      "started_at": 1742518905.037948,
+      "completed_at": 1742518905.038678
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518947.034063,
+      "started_at": 1742518947.03657,
+      "completed_at": 1742518947.0372632
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518947.1182,
+      "started_at": 1742518947.122771,
+      "completed_at": 1742518947.123486
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518947.1194508,
+      "started_at": 1742518947.124545,
+      "completed_at": 1742518947.125105
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518973.347241,
+      "started_at": 1742518973.3502789,
+      "completed_at": 1742518973.351064
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742518973.4407098,
+      "started_at": 1742518973.447189,
+      "completed_at": 1742518973.4480278
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742518973.442152,
+      "started_at": 1742518973.454678,
+      "completed_at": 1742518973.457381
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519053.9170182,
+      "started_at": 1742519053.91945,
+      "completed_at": 1742519053.9201071
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519054.005176,
+      "started_at": 1742519054.011128,
+      "completed_at": 1742519054.0119302
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742519054.0068018,
+      "started_at": 1742519054.0131688,
+      "completed_at": 1742519054.014017
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519082.179685,
+      "started_at": 1742519082.183037,
+      "completed_at": 1742519082.1842859
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519082.273715,
+      "started_at": 1742519082.2908502,
+      "completed_at": 1742519082.292158
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742519082.279636,
+      "started_at": 1742519082.294088,
+      "completed_at": 1742519082.295014
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519131.43328,
+      "started_at": 1742519131.439779,
+      "completed_at": 1742519131.44065
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519131.5430028,
+      "started_at": 1742519131.570789,
+      "completed_at": 1742519131.5737998
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742519131.544908,
+      "started_at": 1742519131.576483,
+      "completed_at": 1742519131.577713
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519355.265574,
+      "started_at": 1742519355.2705438,
+      "completed_at": 1742519355.271519
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519355.328722,
+      "started_at": 1742519355.3355892,
+      "completed_at": 1742519355.337337
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742519355.3303769,
+      "started_at": 1742519355.339401,
+      "completed_at": 1742519355.340585
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519428.0657809,
+      "started_at": 1742519428.068937,
+      "completed_at": 1742519428.0698822
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519428.122627,
+      "started_at": 1742519428.129094,
+      "completed_at": 1742519428.129933
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742519428.124279,
+      "started_at": 1742519428.131552,
+      "completed_at": 1742519428.133151
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519479.401678,
+      "started_at": 1742519479.404866,
+      "completed_at": 1742519479.405652
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519479.4631622,
+      "started_at": 1742519479.4687629,
+      "completed_at": 1742519479.46987
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742519479.4647412,
+      "started_at": 1742519479.471738,
+      "completed_at": 1742519479.473676
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519557.145568,
+      "started_at": 1742519557.148619,
+      "completed_at": 1742519557.149659
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519557.204511,
+      "started_at": 1742519557.211631,
+      "completed_at": 1742519557.21245
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742519557.206377,
+      "started_at": 1742519557.213988,
+      "completed_at": 1742519557.214922
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519613.309248,
+      "started_at": 1742519613.312614,
+      "completed_at": 1742519613.3134348
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742519613.3750489,
+      "started_at": 1742519613.381876,
+      "completed_at": 1742519613.382911
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742519613.376842,
+      "started_at": 1742519613.384717,
+      "completed_at": 1742519613.386917
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742520616.995481,
+      "started_at": 1742520617.011086,
+      "completed_at": 1742520617.012419
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742520617.117135,
+      "started_at": 1742520617.126223,
+      "completed_at": 1742520617.127243
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742520617.1194692,
+      "started_at": 1742520617.130133,
+      "completed_at": 1742520617.131221
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742520729.197132,
+      "started_at": 1742520729.200584,
+      "completed_at": 1742520729.201941
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742520729.25883,
+      "started_at": 1742520729.265714,
+      "completed_at": 1742520729.266716
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742520729.261204,
+      "started_at": 1742520729.268759,
+      "completed_at": 1742520729.2696588
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742520860.108774,
+      "started_at": 1742520860.112649,
+      "completed_at": 1742520860.113877
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742520860.1878788,
+      "started_at": 1742520860.195458,
+      "completed_at": 1742520860.196513
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742520860.189653,
+      "started_at": 1742520860.1991522,
+      "completed_at": 1742520860.2013462
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521097.5449579,
+      "started_at": 1742521097.550449,
+      "completed_at": 1742521097.5519638
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521097.633416,
+      "started_at": 1742521097.6441631,
+      "completed_at": 1742521097.645525
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742521097.636318,
+      "started_at": 1742521097.647912,
+      "completed_at": 1742521097.649528
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521190.803007,
+      "started_at": 1742521190.806588,
+      "completed_at": 1742521190.807693
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521190.8667939,
+      "started_at": 1742521190.873665,
+      "completed_at": 1742521190.87466
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742521190.8686771,
+      "started_at": 1742521190.876517,
+      "completed_at": 1742521190.877564
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521378.075187,
+      "started_at": 1742521378.078651,
+      "completed_at": 1742521378.07968
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521378.137124,
+      "started_at": 1742521378.143552,
+      "completed_at": 1742521378.144554
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742521378.138805,
+      "started_at": 1742521378.146241,
+      "completed_at": 1742521378.147439
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521438.726208,
+      "started_at": 1742521438.730407,
+      "completed_at": 1742521438.731649
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521438.788799,
+      "started_at": 1742521438.797625,
+      "completed_at": 1742521438.7987552
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742521438.79172,
+      "started_at": 1742521438.800864,
+      "completed_at": 1742521438.802599
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521597.7740428,
+      "started_at": 1742521597.778154,
+      "completed_at": 1742521597.779249
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_1.png",
+      "created_at": 1742521597.838101,
+      "started_at": 1742521597.846081,
+      "completed_at": 1742521597.84733
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 1.0,
+      "error": "Image not found: test_image_2.png",
+      "created_at": 1742521597.840184,
+      "started_at": 1742521597.849306,
+      "completed_at": 1742521597.850451
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 0.0,
+      "error": "ImageProcessor.process_image() got an unexpected keyword argument 'progress_callback'",
+      "created_at": 1742521712.8776782,
+      "started_at": 1742521712.882103,
+      "completed_at": 1742521712.882137
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 0.0,
+      "error": "ImageProcessor.process_image() got an unexpected keyword argument 'progress_callback'",
+      "created_at": 1742521712.9390862,
+      "started_at": 1742521712.945796,
+      "completed_at": 1742521712.945826
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 0.0,
+      "error": "ImageProcessor.process_image() got an unexpected keyword argument 'progress_callback'",
+      "created_at": 1742521712.940703,
+      "started_at": 1742521712.947993,
+      "completed_at": 1742521712.9480178
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 0.0,
+      "error": "ImageProcessor.process_image() got an unexpected keyword argument 'progress_callback'",
+      "created_at": 1742522969.6032908,
+      "started_at": 1742522969.625098,
+      "completed_at": 1742522969.625129
+    },
+    {
+      "image_path": "test_image_1.png",
+      "status": "failed",
+      "progress": 0.0,
+      "error": "ImageProcessor.process_image() got an unexpected keyword argument 'progress_callback'",
+      "created_at": 1742522969.686025,
+      "started_at": 1742522969.711214,
+      "completed_at": 1742522969.711245
+    },
+    {
+      "image_path": "test_image_2.png",
+      "status": "failed",
+      "progress": 0.0,
+      "error": "ImageProcessor.process_image() got an unexpected keyword argument 'progress_callback'",
+      "created_at": 1742522969.687907,
+      "started_at": 1742522969.7137868,
+      "completed_at": 1742522969.7138171
     }
   ],
-  "saved_at": 1742201843.691265
+  "saved_at": 1742522969.722833
 }

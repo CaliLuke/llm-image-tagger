@@ -4,6 +4,9 @@ from pathlib import Path
 import os
 import json
 from typing import List, Dict, Optional, Any
+import traceback
+import imghdr
+from PIL import Image
 
 from ..core.logging import logger
 from ..models.schemas import (
@@ -38,6 +41,10 @@ router.should_stop_processing: bool = False
 router.current_task = None  # Store the current background task
 router.processing_queue: Optional[ProcessingQueue] = None
 router.queue_persistence: Optional[QueuePersistence] = None
+
+# Get the project root directory (3 levels up from routes.py)
+project_root = Path(__file__).parent.parent.parent.parent
+data_dir = project_root / "data"
 
 def get_vector_store() -> VectorStore:
     """
@@ -80,27 +87,44 @@ def search_images(query: str, metadata: Dict[str, Dict], vector_store: VectorSto
         List of matching images with their metadata
     """
     results = set()
+    logger.debug(f"Starting search with query: '{query}'")
+    logger.debug(f"Total images in metadata: {len(metadata)}")
     
     # Full-text search
     if query:
         query = query.lower()
+        logger.debug("Performing full-text search")
         for path, meta in metadata.items():
+            logger.debug(f"Checking {path}:")
+            logger.debug(f"  Description: {meta.get('description', '')}")
+            logger.debug(f"  Tags: {meta.get('tags', [])}")
+            logger.debug(f"  Text content: {meta.get('text_content', '')}")
+            
             # Check if query matches any of the text fields
             if (query in meta.get("description", "").lower() or
                 query in meta.get("text_content", "").lower() or
                 any(query in tag.lower() for tag in meta.get("tags", []))):
                 
                 results.add(path)
+                logger.debug(f"  MATCH: Added {path} from full-text search")
+            else:
+                logger.debug("  NO MATCH")
     else:
         # If no query, return all images
+        logger.debug("No query provided, adding all images")
         results.update(metadata.keys())
     
+    logger.debug(f"Full-text search results: {results}")
+    
     # Vector search
+    logger.debug("Performing vector search")
     vector_results = vector_store.search_images(query)
+    logger.debug(f"Vector search returned: {vector_results}")
     results.update(vector_results)
     
     # Convert results to list of dicts with metadata
     search_results = []
+    logger.debug(f"Final combined results before metadata: {results}")
     for path in results:
         if path in metadata:  # Ensure the path exists in metadata
             search_results.append({
@@ -108,7 +132,11 @@ def search_images(query: str, metadata: Dict[str, Dict], vector_store: VectorSto
                 "path": path,
                 **metadata[path]
             })
+            logger.debug(f"Added {path} to final results with metadata")
+        else:
+            logger.debug(f"Skipped {path} - not found in metadata")
     
+    logger.debug(f"Final search results count: {len(search_results)}")
     return search_results
 
 @router.get("/")
@@ -130,42 +158,61 @@ async def get_images(request: FolderRequest):
     Raises:
         HTTPException: If the folder does not exist or there is an error processing the folder
     """
-    folder_path = Path(request.folder_path)
-    
-    logger.info(f"Received request to open folder: {folder_path}")
-    
-    if not folder_path.exists() or not folder_path.is_dir():
-        logger.error(f"Folder not found: {folder_path}")
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    router.current_folder = str(folder_path)
-    
     try:
-        # Initialize vector store in the selected folder
-        vector_store_path = folder_path / ".vectordb"
+        # Convert to absolute path and resolve any symlinks
+        folder_path = Path(request.folder_path).resolve()
+        logger.info(f"Received request to open folder: {folder_path}")
+        
+        if not folder_path.exists() or not folder_path.is_dir():
+            logger.error(f"Folder not found: {folder_path}")
+            raise HTTPException(status_code=404, detail="Folder not found")
+        
+        # Store the absolute path
+        router.current_folder = str(folder_path)
+        logger.info(f"Set current_folder to: {router.current_folder}")
+        
+        # Initialize vector store in the data directory
+        vector_store_path = data_dir / "vectordb"
+        logger.info(f"Using vector store path: {vector_store_path}")
+        
+        # Create vector store directory if it doesn't exist
+        if not vector_store_path.exists():
+            vector_store_path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created vector store directory at {vector_store_path}")
+        
+        # Create a new vector store
+        logger.info("Initializing vector store...")
         router.vector_store = VectorStore(persist_directory=str(vector_store_path))
+        logger.info("Vector store initialized successfully")
         
         # Initialize queue persistence in the data directory
-        data_dir = Path("/Users/luca/Documents/Code/llm-image-tagger/data")
         if not data_dir.exists():
             data_dir.mkdir(parents=True, exist_ok=True)
         router.queue_persistence = QueuePersistence(data_dir)
         logger.info(f"Initialized queue persistence at {data_dir}")
         
         # Initialize processing queue with persistence
-        # Try to load existing queue state first
         router.processing_queue = ProcessingQueue.load(router.queue_persistence)
         logger.info("Initialized processing queue")
         
         metadata = load_or_create_metadata(folder_path)
         images = [create_image_info(rel_path, metadata) 
                   for rel_path in metadata.keys()]
-        logger.info(f"Successfully processed folder: {folder_path}")
+        logger.info(f"Successfully processed folder with {len(images)} images")
         return {"images": images}
+            
+    except HTTPException as e:
+        # Re-raise HTTP exceptions without wrapping
+        logger.error(f"HTTP error processing folder {request.folder_path}: {str(e)}")
+        raise
+            
     except Exception as e:
-        logger.error(f"Error processing folder {folder_path}: {str(e)}")
+        # Log unexpected errors and raise as 500
+        logger.error(f"Unexpected error processing folder {request.folder_path}: {str(e)}")
+        logger.error(f"Exception type: {type(e)}")
+        logger.error(f"Exception traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, 
-                            detail=f"Error processing folder: {str(e)}")
+                          detail=f"Error processing folder: {str(e)}")
 
 @router.get("/image/{path:path}")
 async def get_image(path: str):
@@ -183,15 +230,44 @@ async def get_image(path: str):
     """
     try:
         folder_path = get_current_folder()
+        logger.debug(f"Getting image from folder: {folder_path}")
         
         # Combine the base folder path with the relative image path
         full_path = os.path.join(folder_path, path)
+        logger.debug(f"Full image path: {full_path}")
         
         if not os.path.exists(full_path):
+            logger.error(f"Image not found at path: {full_path}")
             raise HTTPException(status_code=404, detail="Image not found")
-        
-        return FileResponse(full_path)
+            
+        # Validate image format
+        try:
+            with Image.open(full_path) as img:
+                format = img.format.lower()
+                logger.info(f"Image format: {format}")
+                
+                # Convert RGBA to RGB if needed
+                if img.mode == 'RGBA':
+                    logger.info(f"Converting RGBA image to RGB")
+                    rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[3])
+                    
+                    # Save as temporary file
+                    import tempfile
+                    temp = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{format}')
+                    rgb_img.save(temp.name, format=format)
+                    return FileResponse(temp.name, media_type=f"image/{format}")
+                
+                # For other formats, serve directly
+                return FileResponse(full_path, media_type=f"image/{format}")
+        except Exception as e:
+            logger.error(f"Error validating image {full_path}: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Invalid image format: {str(e)}")
+            
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error serving image {path}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/search", response_model=SearchResponse)
@@ -607,13 +683,12 @@ async def update_metadata(
             "message": "Metadata updated successfully",
             "image": image_info
         }
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         logger.error(f"Error updating metadata: {str(e)}")
-        return {
-            "success": False,
-            "message": f"Error updating metadata: {str(e)}",
-            "image": None
-        }
+        raise HTTPException(status_code=500, detail=str(e))
 
 class LogActionRequest(BaseModel):
     """Request model for logging user actions."""

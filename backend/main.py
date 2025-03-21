@@ -1,10 +1,11 @@
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
 from app.api.routes import router
-from app.core.config import settings
+from app.core.settings import settings
 from app.core.logging import logger
 
 # Create FastAPI application
@@ -27,10 +28,11 @@ if __name__ == "__main__":
     
     logger.info(f"Starting server at http://{host}:{port}")
     
-    # Start the server
+    # Start the server with logging configuration
     uvicorn.run(
         "main:app",
         host=host,
         port=port,
-        reload=True  # Enable auto-reload during development
+        reload=True,  # Enable auto-reload during development
+        log_config=None  # Use our custom logging config
     ) 

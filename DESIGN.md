@@ -243,6 +243,129 @@
   python tests/test_no_legacy_code.py
   ```
 
+## Critical Issues and Architectural Principles
+
+### ⚠️ CRITICAL: No Hardcoded Paths
+- **NEVER** hardcode paths like `/Volumes/screenshots/Datapad`
+- All paths must be:
+  1. Configurable via environment variables or config files
+  2. Relative to project root or user home directory
+  3. Platform-independent (use Path objects)
+  4. Validated before use
+- Current violations:
+  - Frontend sending raw paths directly
+  - Backend not normalizing paths
+  - Test data using absolute paths
+
+### ⚠️ CRITICAL: Ollama Parallel Request Limitation
+- Ollama (mllama) does not support parallel requests
+- Current symptoms:
+  - Warnings: "mllama doesn't support parallel requests yet"
+  - Failed requests after ~27s timeout
+  - Connection aborts during long operations
+- Impact:
+  - Batch processing reliability issues
+  - Unpredictable timeouts
+  - Resource waste from failed requests
+
+## Phase 7.5: Ollama Request Management (NEW)
+
+### Goals
+1. Implement proper request queuing for Ollama
+2. Prevent parallel request attempts
+3. Improve error handling and timeouts
+4. Add request metrics and monitoring
+
+### Implementation Plan
+
+1. Create Ollama Request Manager:
+```python
+class OllamaRequestManager:
+    def __init__(self):
+        self._semaphore = asyncio.Semaphore(1)  # Only one request at a time
+        self._current_request = None
+        self._queue = asyncio.Queue()
+        self._metrics = {
+            'total_requests': 0,
+            'failed_requests': 0,
+            'avg_processing_time': 0
+        }
+
+    async def submit_request(self, request):
+        """Queue a request and wait for result."""
+        await self._queue.put(request)
+        return await self._process_next()
+```
+
+2. Add Request Monitoring:
+```python
+    async def _track_metrics(self, start_time, success):
+        duration = time.time() - start_time
+        self._metrics['total_requests'] += 1
+        if not success:
+            self._metrics['failed_requests'] += 1
+        # Update rolling average
+        self._metrics['avg_processing_time'] = (
+            (self._metrics['avg_processing_time'] * 
+             (self._metrics['total_requests'] - 1) + duration) /
+            self._metrics['total_requests']
+        )
+```
+
+### Testing Plan
+
+1. Unit Tests:
+```python
+async def test_ollama_request_manager():
+    manager = OllamaRequestManager()
+    
+    # Test sequential requests
+    results = await asyncio.gather(
+        manager.submit_request("req1"),
+        manager.submit_request("req2")
+    )
+    assert len(results) == 2
+    
+    # Test timeout handling
+    with pytest.raises(TimeoutError):
+        await manager.submit_request("slow_req", timeout=1.0)
+```
+
+2. Integration Tests:
+```python
+async def test_batch_image_processing():
+    # Process 10 images
+    # Verify:
+    # - No parallel requests
+    # - All images processed
+    # - Metrics collected
+    # - No timeouts
+```
+
+3. Stress Tests:
+```python
+async def test_high_concurrency():
+    # Submit 100 requests simultaneously
+    # Verify:
+    # - All processed eventually
+    # - No memory leaks
+    # - Consistent performance
+```
+
+### Verification Checklist
+- [ ] No parallel request warnings in logs
+- [ ] All requests processed sequentially
+- [ ] Proper timeout handling
+- [ ] Metrics collection working
+- [ ] No resource leaks
+- [ ] Graceful shutdown
+- [ ] Documentation updated
+
+### Rollback Plan
+1. Keep old implementation in `legacy_processor.py`
+2. Feature flag for gradual rollout
+3. Monitoring for comparison
+
 ## Progress Tracking
 
 - Current Phase: 7
@@ -296,3 +419,112 @@
 - Comprehensive tests added for persistence and progress tracking
 - No regressions in existing functionality
 - ✅ Verified through automated tests on 2024-03-18
+
+## Phase 7.4: Path Handling Standardization (CURRENT)
+
+### Goals
+1. Remove all hardcoded paths
+2. Implement consistent path handling across the application
+3. Add path validation and security checks
+4. Support cross-platform path handling
+
+### Implementation Steps
+
+1. Create Path Configuration:
+```python
+# backend/app/core/config.py
+class PathConfig:
+    def __init__(self):
+        self.project_root = Path(__file__).parent.parent.parent.resolve()
+        self.data_dir = self.project_root / "data"
+        self.temp_dir = self.data_dir / "temp"
+        
+    def normalize_path(self, path: Union[str, Path]) -> Path:
+        """Convert any path to absolute and validate it"""
+        path = Path(path).expanduser().resolve()
+        if not path.exists():
+            raise ValueError(f"Path does not exist: {path}")
+        return path
+        
+    def is_safe_path(self, path: Path) -> bool:
+        """Check if path is safe to access"""
+        try:
+            path.resolve().relative_to(Path.home())
+            return True
+        except ValueError:
+            return False
+```
+
+2. Update Frontend Path Handling:
+```javascript
+// static/index.js
+async function submitPath(path) {
+    // Convert to platform-independent format
+    const normalizedPath = path.replace(/\\/g, '/');
+    // Remove any trailing slashes
+    const cleanPath = normalizedPath.replace(/\/+$/, '');
+    return await api.post('/images', { folder_path: cleanPath });
+}
+```
+
+3. Update API Routes:
+```python
+# backend/app/api/routes.py
+@router.post("/images")
+async def get_images(request: FolderRequest):
+    try:
+        path = path_config.normalize_path(request.folder_path)
+        if not path_config.is_safe_path(path):
+            raise HTTPException(403, "Access to this path is not allowed")
+        # ... rest of the function
+```
+
+### Testing Plan
+
+1. Unit Tests:
+```python
+def test_path_normalization():
+    config = PathConfig()
+    
+    # Test relative paths
+    assert config.normalize_path("./test") == Path.cwd() / "test"
+    
+    # Test home directory expansion
+    home = str(Path.home())
+    assert config.normalize_path("~/test").startswith(home)
+    
+    # Test path validation
+    with pytest.raises(ValueError):
+        config.normalize_path("/nonexistent/path")
+```
+
+2. Security Tests:
+```python
+def test_path_security():
+    config = PathConfig()
+    
+    # Test path traversal attempts
+    assert not config.is_safe_path(Path("/etc/passwd"))
+    assert not config.is_safe_path(Path("../../../etc/passwd"))
+    
+    # Test allowed paths
+    assert config.is_safe_path(Path.home() / "Documents")
+```
+
+### Migration Plan
+1. Add new path handling without removing old code
+2. Update tests to use new path handling
+3. Gradually migrate endpoints to use new path handling
+4. Remove old path handling code
+
+### Verification Checklist
+- [ ] All hardcoded paths removed
+- [ ] Path validation working
+- [ ] Security checks in place
+- [ ] Cross-platform tests passing
+- [ ] No regressions in existing functionality
+
+### Rollback Plan
+1. Keep old path handling in separate module
+2. Feature flag for gradual rollout
+3. Easy revert path if issues found

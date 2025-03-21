@@ -29,8 +29,14 @@ class MockBackgroundTasks:
 class MockImageProcessor:
     """Mock for ImageProcessor."""
     
-    async def process_image(self, image_path):
+    async def process_image(self, image_path, progress_callback=None):
         """Mock processing an image."""
+        # Call progress callback if provided to simulate progress
+        if progress_callback:
+            progress_callback(0.0)  # Start
+            progress_callback(0.5)  # Middle
+            progress_callback(1.0)  # Complete
+            
         return {
             "description": f"Description for {image_path}",
             "tags": ["test", "mock"],
@@ -191,8 +197,12 @@ async def test_process_task_stop_after():
     queue.get_next_task()  # Set current_task
     
     # Create a mock image processor that sets should_stop to True after processing
-    async def mock_process_image(image_path):
+    async def mock_process_image(image_path, progress_callback=None):
+        if progress_callback:
+            progress_callback(0.0)
         queue.should_stop = True
+        if progress_callback:
+            progress_callback(1.0)
         return {
             "description": f"Description for {image_path}",
             "tags": ["test", "mock"],

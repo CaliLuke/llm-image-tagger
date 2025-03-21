@@ -1,0 +1,56 @@
+{
+    "test_image.png": {
+        "description": "This is a test image with some text",
+        "tags": [
+            "test",
+            "image",
+            "text"
+        ],
+        "text_content": "API Test Image",
+        "is_processed": true
+    },
+    "test_image_2.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_image_0.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_image_1.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "invalid.jpg": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_rgba.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_rgb.jpg": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "irrelevant.png": {
+        "description": "An unrelated image",
+        "tags": [
+            "unrelated"
+        ],
+        "text_content": "",
+        "is_processed": true
+    }
+}

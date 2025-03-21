@@ -105,7 +105,7 @@ class ImageProcessor:
     async def _query_ollama(self, prompt: str, image_path: str, format_schema: dict) -> str:
         """Send a query to Ollama with an image and expect structured output."""
         try:
-            response = ollama.chat(
+            response = await ollama.chat(
                 model=self.model_name,
                 messages=[{
                     'role': 'user',

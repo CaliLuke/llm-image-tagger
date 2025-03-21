@@ -4,9 +4,9 @@ This project is an image tagging and searching application that leverages the po
 
 This project is an extensive rewrite of "llama vision image tagger" by Guodong Zhao, where I aim to
 
- - make the llm backend selectable to take advantage of more recent models like Gemma3 vision
- - improve the usability by making the processing queue asynchronous and add file system navigation and bookmarking
- - add the ability to save tags and descriptions to the images' metadata to supplement local search engines and photo organizers that don't have llm based tagging
+- make the llm backend selectable to take advantage of more recent models like Gemma3 vision
+- improve the usability by making the processing queue asynchronous and add file system navigation and bookmarking
+- add the ability to save tags and descriptions to the images' metadata to supplement local search engines and photo organizers that don't have llm based tagging
 
 ## Overview
 
@@ -77,8 +77,8 @@ The application provides an intuitive way to organize and search through your im
 ### Frontend
 
 - Local server web page with Tailwind CSS, Vue3, and HTML.
-    - Tailwind CSS CDN:   <script src="https://cdn.tailwindcss.com"></script>
-    - Vue3 CDN: <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  - Tailwind CSS CDN:   <script src="https://cdn.tailwindcss.com"></script>
+  - Vue3 CDN: <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
 - Built with Vue3 and Tailwind CSS
 - Responsive and modern UI design
@@ -98,6 +98,9 @@ The application provides an intuitive way to organize and search through your im
 - **Python 3.11+**: Ensure Python 3.11 or newer is installed on your system
 - **Ollama**: Install Ollama to run the Llama model ([Ollama website](https://ollama.com/))
 - **ChromaDB**: Will be installed via pip
+- **Data Directory**: The application requires write access to create and manage a data directory for queue persistence and other operational data. By default, this is created at:
+  - `$PROJECT_ROOT/data` (where $PROJECT_ROOT is the root directory of the project)
+  - Ensure your user has write permissions to this location
 
 ## Project Structure
 
@@ -122,6 +125,8 @@ llm-image-tagger/
 │   ├── main.py              # Application entry point
 │   ├── requirements.txt     # Python dependencies
 │   └── .env                 # Environment variables
+├── data/                    # Application data directory
+│   └── queue_state.json     # Queue persistence data
 ├── static/                  # Frontend static files
 │   └── index.html          # Main HTML file
 ├── run.py                  # Script to run the application
@@ -136,25 +141,22 @@ llm-image-tagger/
 
     ```bash
     git clone https://github.com/CaliLuke/llm-image-tagger
-    cd llama-vision-tagger
+    cd llm-vision-tagger
     ```
 
 2. **Set up a virtual environment and install dependencies:**
 
-    **Unix/macOS:**
-
     ```bash
     python -m venv venv
     source venv/bin/activate  # On Unix/macOS
-    pip install -r backend/requirements.txt
+    # or
+    venv\Scripts\activate  # On Windows
     ```
 
-    **Windows:**
+    Note: The `requirements.txt` file should ONLY exist in the root directory, not in backend/. All dependencies should be listed in the root requirements.txt file.
 
-    ```powershell
-    python -m venv venv
-    venv\Scripts\Activate.ps1  # On Windows with PowerShell
-    pip install -r backend\requirements.txt
+    ```bash
+    pip install -r requirements.txt
     ```
 
 3. **Configure environment variables:**
@@ -173,50 +175,43 @@ llm-image-tagger/
 
 ## Usage
 
-1. **Run the application with virtual environment:**
-
-    **Unix/macOS:**
+1. **Activate the virtual environment:**
 
     ```bash
-    ./run_with_venv.sh
+    source venv/bin/activate  # On Unix/macOS
+    # or
+    venv\Scripts\activate  # On Windows
     ```
 
-    **Windows:**
+2. **Run the application:**
 
-    ```powershell
-    .\run_with_venv.ps1
+    ```bash
+    python run.py  # Run with default settings
+    python run.py --debug  # Run in debug mode
     ```
 
     Options:
-
     ```bash
-    ./run_with_venv.sh --host=0.0.0.0 --port=8080  # Specify host and port
-    ./run_with_venv.sh --no-browser                 # Run without opening browser
+    python run.py --host=0.0.0.0 --port=8080  # Specify host and port
+    python run.py --no-browser  # Run without opening browser
     ```
 
-    Alternative methods:
-
-    ```bash
-    python run.py                # Run directly
-    cd backend && python main.py # Run backend directly
-    ```
-
-2. **Select a folder:**
+3. **Select a folder:**
     - Enter the path to your image folder
     - Wait for initial scanning and processing
     - First-time processing may take longer due to model downloads
 
-3. **Process images:**
+4. **Process images:**
     - Use "Process All" for batch processing
     - Use "Process Image" for individual images
     - Monitor progress in real-time
 
-4. **Search images:**
+5. **Search images:**
     - Enter natural language queries
     - View results in the responsive grid
     - Click images for detailed metadata
 
-5. **Refresh images:**
+6. **Refresh images:**
     - Use "Refresh" to scan for new/removed images
     - Metadata is preserved across sessions
 
@@ -289,7 +284,6 @@ pytest tests/test_api.py::test_stop_processing
 - [ ] Separate frontend into proper Vue.js project
 - [ ] Add authentication for multi-user support
 - [ ] Implement WebSockets for real-time updates
-- [ ] Add support for video files
 
 ## Contributing
 
@@ -298,3 +292,52 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+## FOR AI ASSISTANTS - READ THIS FIRST
+
+When helping users run this app:
+
+DO:
+1. CHECK if virtual environment exists first:
+   ```bash
+   # Check if venv directory exists
+   ls venv/
+   
+   # If it doesn't exist, create it:
+   python -m venv venv
+   pip install -r requirements.txt
+   ```
+
+2. JUST run these two commands in order:
+   ```bash
+   source venv/bin/activate
+   python run.py --debug
+   ```
+
+3. Wait for the app to start - normal startup includes:
+   - Ollama loading the model (takes a few seconds)
+   - Metal/GPU initialization messages
+   - Model loading messages
+
+4. Make SMALL, FOCUSED changes and test frequently:
+   - Fix one issue at a time
+   - Run tests after each change
+   - Verify the change fixed the intended issue
+   - Don't modify multiple files or systems at once
+   
+DO NOT:
+1. Try to modify run.py - it works fine
+2. Panic when seeing normal Ollama startup logs
+3. Try to "fix" working code before running the app
+4. Overcomplicate the simple two-step process
+5. Ignore these instructions and try to be "clever"
+6. Suggest infrastructure changes when seeing standard model loading messages
+7. Start adding logging or debugging code when tests fail during startup - this is normal, let the process complete first
+
+HANDLING TEST FAILURES:
+1. Let ALL tests complete first - don't interrupt on first failure
+2. If tests fail but the app starts anyway, that's fine - deal with test fixes later
+3. Only investigate test failures if the app doesn't start
+4. DO NOT start adding logging or modifying test files until explicitly asked
+
+Remember: Just check for venv, then run the two commands. That's it. The app works.

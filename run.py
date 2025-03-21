@@ -10,6 +10,26 @@ import webbrowser
 import time
 import subprocess
 import argparse
+import socket
+import psutil
+
+def check_existing_instance(host, port):
+    """Check if another instance is already running on the specified host and port."""
+    try:
+        # Try to create a socket with the same host and port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((host, port))
+            s.close()
+            return None
+    except socket.error as e:
+        # Socket is in use, try to find the process
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if proc.info['cmdline'] and 'uvicorn' in ' '.join(proc.info['cmdline']):
+                    return proc.info['pid']
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return True  # Port is in use but couldn't find the process
 
 def parse_args():
     """Parse command line arguments."""
@@ -38,6 +58,17 @@ def main():
     project_root = os.path.dirname(os.path.abspath(__file__))
     os.chdir(project_root)
     
+    # Check for existing instance
+    existing_pid = check_existing_instance(args.host, args.port)
+    if existing_pid:
+        if isinstance(existing_pid, int):
+            print(f"Error: Another instance is already running (PID: {existing_pid})")
+            print("Please stop the existing instance first.")
+        else:
+            print(f"Error: Port {args.port} is already in use.")
+            print("Please stop the process using this port or specify a different port with --port.")
+        sys.exit(1)
+    
     # In debug mode, run tests first (unless --skip-tests is specified)
     if args.debug and not args.skip_tests:
         if not run_tests():
@@ -49,12 +80,15 @@ def main():
     
     # Start the server
     print(f"Starting server at http://{args.host}:{args.port}")
-    server_process = subprocess.Popen([
+    cmd = [
         sys.executable, "-m", "uvicorn", "main:app", 
         "--host", args.host, 
-        "--port", str(args.port),
-        "--reload" if args.debug else ""
-    ])
+        "--port", str(args.port)
+    ]
+    if args.debug:
+        cmd.append("--reload")
+    
+    server_process = subprocess.Popen(cmd)
     
     # Open the browser
     if not args.no_browser:
