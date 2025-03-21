@@ -7,11 +7,16 @@ import sys
 import os
 import tempfile
 import shutil
+import logging
 from backend.app.services.processing_queue import ProcessingQueue
 from backend.app.services.queue_processor import QueueProcessor
 from backend.app.services.vector_store import VectorStore
 from backend.app.api.routes import router
 from backend.app.models.schemas import ImageDescription, ImageTags, ImageText
+
+# Set up logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 # Add the backend directory to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../backend')))
@@ -21,18 +26,24 @@ from main import app
 @pytest.fixture(autouse=True)
 def setup_test_environment():
     """Set up test environment before each test."""
+    logger.info("Setting up test environment")
+    
     # Create a temporary directory for vector store
     temp_dir = tempfile.mkdtemp()
+    logger.debug(f"Created temporary directory at {temp_dir}")
     
     # Create data directory
     data_dir = Path(temp_dir) / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
+    logger.debug(f"Created data directory at {data_dir}")
     
     # Create vector store directory
     vector_dir = data_dir / "vectordb"
     vector_dir.mkdir(parents=True, exist_ok=True)
+    logger.debug(f"Created vector store directory at {vector_dir}")
     
     # Initialize router state with test configuration
+    logger.debug("Initializing router state")
     router.vector_store = VectorStore(persist_directory=str(vector_dir))
     router.processing_queue = ProcessingQueue()
     router.queue_persistence = None  # No persistence needed for tests
@@ -40,11 +51,17 @@ def setup_test_environment():
     yield
     
     # Clean up
+    logger.info("Cleaning up test environment")
     shutil.rmtree(temp_dir)
+    logger.debug(f"Removed temporary directory at {temp_dir}")
+    
+    # Reset router state
+    logger.debug("Resetting router state")
     router.vector_store = None
     router.processing_queue = None
     router.queue_persistence = None
     router.current_folder = None
+    logger.info("Test environment cleanup complete")
 
 @pytest.fixture
 def test_folder(tmp_path):
@@ -72,6 +89,7 @@ def test_images():
 @pytest.fixture
 def path_config(tmp_path):
     """Create a PathConfig instance for testing."""
+    logger.info("Setting up PathConfig fixture")
     from backend.app.core.config import PathConfig
     
     # Create test directories
@@ -83,6 +101,7 @@ def path_config(tmp_path):
     project_root.mkdir(parents=True)
     data_dir.mkdir()
     temp_dir.mkdir()
+    logger.debug(f"Created test directories: project_root={project_root}, data_dir={data_dir}, temp_dir={temp_dir}")
     
     # Initialize PathConfig with test directories
     config = PathConfig()
@@ -101,6 +120,7 @@ def path_config(tmp_path):
         Path.cwd(),
         tmp_path  # Add the pytest temporary directory
     ]
+    logger.debug("Configured safe directories")
     
     return config
 

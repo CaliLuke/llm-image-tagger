@@ -7,9 +7,10 @@ from PIL import Image, ImageDraw
 import logging
 import json
 import shutil
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import asyncio
 import time
+import hashlib
 
 # Add the parent directory to the path so we can import the app
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,18 +40,104 @@ MOCK_RESPONSES = {
 }
 
 @pytest.fixture
-def mock_image_processor():
-    """Mock the image processor to avoid actual LLM calls."""
-    with patch('app.api.routes.ImageProcessor') as mock:
-        processor_instance = MagicMock()
-        async def mock_process_image(image_path):
-            # Simulate minimal processing time
-            await asyncio.sleep(0.1)  # Reduced from 1.0s to 0.1s
-            image_name = Path(image_path).name
-            return MOCK_RESPONSES.get(image_name, MOCK_RESPONSES["test_image.png"])
-        processor_instance.process_image.side_effect = mock_process_image
-        mock.return_value = processor_instance
-        yield mock
+async def mock_image_processor():
+    """
+    Fixture that provides a mock ImageProcessor for testing.
+    
+    This mock simulates the behavior of the Ollama client by:
+    1. Implementing proper async iteration for streaming responses
+    2. Providing progress updates and final content in the expected format
+    3. Simulating processing delays to match real-world behavior
+    """
+    
+    class AsyncResponseGenerator:
+        """
+        Helper class that implements the async iterator protocol for mocking
+        Ollama's streaming responses.
+        
+        This class properly implements __aiter__ and __anext__ to simulate
+        the streaming behavior of the Ollama client.
+        """
+        def __init__(self, responses):
+            self.responses = responses
+            self.index = 0
+            
+        def __aiter__(self):
+            return self
+            
+        async def __anext__(self):
+            if self.index >= len(self.responses):
+                raise StopAsyncIteration
+            response = self.responses[self.index]
+            self.index += 1
+            await asyncio.sleep(0.1)  # Simulate processing delay
+            return response
+            
+        @staticmethod
+        def _get_content(format_schema):
+            """Generate appropriate content based on the format schema."""
+            if 'description' in format_schema.get('properties', {}):
+                return {
+                    'message': {
+                        'content': json.dumps({
+                            'description': 'This is a test image with some text'
+                        })
+                    }
+                }
+            elif 'tags' in format_schema.get('properties', {}):
+                return {
+                    'message': {
+                        'content': json.dumps({
+                            'tags': ['test', 'image', 'text']
+                        })
+                    }
+                }
+            elif 'text' in format_schema.get('properties', {}):
+                return {
+                    'message': {
+                        'content': json.dumps({
+                            'text': 'API Test Image'
+                        })
+                    }
+                }
+            return {}
+
+    async def mock_chat(**kwargs):
+        """
+        Mock implementation of the Ollama chat method.
+        
+        Args:
+            **kwargs: Arguments that would be passed to the real chat method
+                     including model, messages, format, and stream.
+                     
+        Returns:
+            AsyncResponseGenerator: An async generator that yields progress updates
+            and final content in the expected format.
+        """
+        format_schema = kwargs.get('format', {})
+        responses = [
+            # Progress update (50% complete)
+            {
+                'eval_count': 50,
+                'prompt_eval_count': 100,
+                'message': {'content': None}
+            },
+            # Final content with proper JSON formatting
+            AsyncResponseGenerator._get_content(format_schema)
+        ]
+        return AsyncResponseGenerator(responses)
+
+    # Create the mock AsyncClient
+    with patch('backend.app.services.image_processor.ollama.AsyncClient') as mock_client:
+        # Configure the mock client to return an async mock for the chat method
+        client_instance = mock_client.return_value
+        client_instance.chat = mock_chat
+        
+        # Create and yield the ImageProcessor instance
+        processor = ImageProcessor()
+        yield processor
+
+    logger.info("mock_image_processor fixture cleanup complete")
 
 @pytest.fixture(autouse=True)
 def reset_app_state():
@@ -149,12 +236,10 @@ def initialized_folder(test_folder, client):
     if hasattr(app, 'vector_store'):
         delattr(app, 'vector_store')
 
-@pytest.mark.asyncio
-
 def test_process_image_not_found(initialized_folder, client):
     """Test processing a non-existent image."""
     response = client.post("/process-image", json={"image_path": "/nonexistent/image.png"})
-    assert response.status_code == 200  # API returns 200 with error in response
+    assert response.status_code == 200
     data = response.json()
     assert "success" in data
     assert not data["success"]  # Should be False for error cases
@@ -165,52 +250,70 @@ def test_process_image_not_found(initialized_folder, client):
 async def test_update_metadata(initialized_folder, client, mock_image_processor):
     """Test updating image metadata."""
     logger.info("Starting test_update_metadata")
-    
+
     image_path = str(Path(initialized_folder) / "test_image.png")
     image_filename = Path(image_path).name
     logger.info(f"Using test image path: {image_path}")
     logger.info(f"Using image filename: {image_filename}")
+
+    # Mock metadata file operations
+    mock_metadata = {
+        "test_image.png": MOCK_RESPONSES["test_image.png"]
+    }
     
-    # First process the image
-    start_time = time.time()
-    process_response = client.post("/process-image", json={"image_path": image_filename})  # Use filename instead of full path
-    assert process_response.status_code == 200
-    logger.info(f"Process image request completed in {time.time() - start_time:.2f} seconds")
-    
-    # Wait for mock processing to complete
-    await asyncio.sleep(0.1)  # Reduced from 0.5s to 0.1s since mock is reliable
-    
-    # Then update its metadata
-    start_time = time.time()
-    response = client.post("/update-metadata", json={
-        "path": image_filename,
-        "description": "Updated description",
-        "tags": ["test", "updated"],
-        "text_content": "Updated text"
-    })
-    logger.info(f"Update metadata request completed in {time.time() - start_time:.2f} seconds")
-    
-    assert response.status_code == 200
-    data = response.json()
-    logger.info(f"Response data: {data}")
-    
-    assert data["success"] == True
-    assert "image" in data
-    assert data["image"]["description"] == "Updated description"
-    assert "test" in data["image"]["tags"]
-    assert "updated" in data["image"]["tags"]
-    assert data["image"]["text_content"] == "Updated text"
-    
-    # Verify metadata file was updated
-    metadata_file = Path(initialized_folder) / "image_metadata.json"
-    with open(metadata_file, 'r') as f:
-        metadata = json.load(f)
-    logger.info(f"Final metadata: {metadata}")
-    assert image_filename in metadata
-    assert metadata[image_filename]["description"] == "Updated description"
-    assert metadata[image_filename]["tags"] == ["test", "updated"]
-    assert metadata[image_filename]["text_content"] == "Updated text"
-    
+    # Create a context manager to patch both open() and json operations
+    with patch('builtins.open', create=True) as mock_open, \
+         patch('json.load') as mock_json_load, \
+         patch('json.dump') as mock_json_dump:
+        
+        # Set up the mock to return our test metadata
+        mock_json_load.return_value = mock_metadata
+        
+        # First process the image
+        process_response = client.post("/process-image", json={"image_path": image_filename})
+        assert process_response.status_code == 200
+        
+        # Process the streaming response
+        updates = []
+        for line in process_response.iter_lines():
+            if line:  # Skip empty lines
+                update = json.loads(line)
+                updates.append(update)
+        
+        # Verify the updates
+        assert len(updates) > 0
+        assert all(update.get("success", False) for update in updates)
+        assert updates[0]["progress"] == 0
+        assert updates[-1]["progress"] == 1.0
+        assert "image" in updates[-1]
+        
+        # Then update its metadata
+        response = client.post("/update-metadata", json={
+            "path": image_filename,
+            "description": "Updated description",
+            "tags": ["test", "updated"],
+            "text_content": "Updated text"
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert data["success"] == True
+        assert "image" in data
+        assert data["image"]["description"] == "Updated description"
+        assert "test" in data["image"]["tags"]
+        assert "updated" in data["image"]["tags"]
+        assert data["image"]["text_content"] == "Updated text"
+        
+        # Verify that json.dump was called with the updated metadata
+        mock_json_dump.assert_called_once()
+        saved_metadata = mock_json_dump.call_args[0][0]
+        assert image_filename in saved_metadata
+        assert saved_metadata[image_filename]["description"] == "Updated description"
+        assert "test" in saved_metadata[image_filename]["tags"]
+        assert "updated" in saved_metadata[image_filename]["tags"]
+        assert saved_metadata[image_filename]["text_content"] == "Updated text"
+        
     logger.info("test_update_metadata completed successfully")
 
 @pytest.mark.asyncio
@@ -228,7 +331,20 @@ async def test_search_with_results_mocked(initialized_folder, client, mock_image
     for path in [test_image_path, irrelevant_image_path]:
         process_response = client.post("/process-image", json={"image_path": Path(path).name})
         assert process_response.status_code == 200
-        await asyncio.sleep(0.1)  # Wait for processing
+        
+        # Process the streaming response
+        updates = []
+        for line in process_response.iter_lines():
+            if line:  # Skip empty lines
+                update = json.loads(line)
+                updates.append(update)
+        
+        # Verify the updates
+        assert len(updates) > 0
+        assert all(update.get("success", False) for update in updates)  # All updates should be successful
+        assert updates[0]["progress"] == 0  # First update should be initial progress
+        assert updates[-1]["progress"] == 1.0  # Last update should be final progress
+        assert "image" in updates[-1]  # Last update should contain metadata
     
     # Search with a relevant query
     response = client.post("/search", json={"query": "test image with text"})
@@ -242,8 +358,9 @@ async def test_search_with_results_mocked(initialized_folder, client, mock_image
     # Search with an irrelevant query that won't match in either search
     response = client.post("/search", json={"query": "xyz123"})  # Query that won't match any text or vectors
     assert response.status_code == 200
-    irrelevant_results = len(response.json()["images"])
-    assert irrelevant_results < relevant_results  # Irrelevant query should return fewer results
+    data = response.json()
+    assert "images" in data
+    assert len(data["images"]) == 0  # Should find no results
 
 @pytest.mark.asyncio
 async def test_check_init_status(client):
@@ -310,30 +427,59 @@ async def test_stop_processing(client, test_folder, mock_image_processor):
 
 @pytest.mark.asyncio
 async def test_process_image_endpoint_mocked(initialized_folder, client, mock_image_processor):
-    """Test the process-image endpoint with mocked processor."""
-    image_path = str(Path(initialized_folder) / "test_image.png")
-    response = client.post("/process-image", json={"image_path": "test_image.png"})
+    """Test the process-image endpoint with a mocked processor."""
+    logger.info("Starting test_process_image_endpoint_mocked")
+    
+    # Use the test image from the initialized folder
+    test_image = "test_image.png"
+    logger.info(f"Testing with image: {test_image}")
+    
+    # Make the request
+    logger.debug("Making POST request to /process-image")
+    response = client.post("/process-image", json={"image_path": test_image})
+    logger.debug(f"Response status code: {response.status_code}")
     assert response.status_code == 200
     
-    # Initial response should indicate processing started
-    data = response.json()
-    assert data["success"] is True
-    assert "image" in data
-    assert data["message"] == "Image processing started"
+    # Process the streaming response
+    updates = []
+    logger.debug("Processing streaming response")
+    for line in response.iter_lines():
+        if line:  # Skip empty lines
+            update = json.loads(line)
+            logger.debug(f"Received update: {json.dumps(update, indent=2)}")
+            updates.append(update)
     
-    # Wait for processing to complete (mock sleeps for 1.0s)
-    await asyncio.sleep(0.1)  # Reduced from 1.0s to 0.1s since mock is reliable
+    # Verify the updates
+    logger.debug(f"Received {len(updates)} updates")
+    assert len(updates) > 0
     
-    # Now check the metadata file to verify processing completed
-    metadata_file = Path(initialized_folder) / "image_metadata.json"
-    with open(metadata_file, 'r') as f:
-        metadata = json.load(f)
+    # Check each update's success status
+    for i, update in enumerate(updates):
+        success = update.get("success", False)
+        logger.debug(f"Update {i} success: {success}")
+        assert success, f"Update {i} failed: {json.dumps(update, indent=2)}"
     
-    # Verify the metadata contains our mock data
-    assert "test_image.png" in metadata
-    assert metadata["test_image.png"]["description"] == MOCK_RESPONSES["test_image.png"]["description"]
-    assert metadata["test_image.png"]["tags"] == MOCK_RESPONSES["test_image.png"]["tags"]
-    assert metadata["test_image.png"]["text_content"] == MOCK_RESPONSES["test_image.png"]["text_content"]
+    # Verify progress values
+    logger.debug(f"First update progress: {updates[0]['progress']}")
+    logger.debug(f"Final update progress: {updates[-1]['progress']}")
+    assert updates[0]["progress"] == 0
+    assert updates[-1]["progress"] == 1.0
+    
+    # Verify final metadata
+    logger.debug("Verifying final metadata")
+    final_metadata = updates[-1]["image"]
+    logger.debug(f"Final metadata: {json.dumps(final_metadata, indent=2)}")
+    assert isinstance(final_metadata, dict)
+    
+    # Compare with expected responses
+    expected = MOCK_RESPONSES["test_image.png"]
+    logger.debug(f"Expected metadata: {json.dumps(expected, indent=2)}")
+    assert final_metadata["description"] == expected["description"]
+    assert final_metadata["tags"] == expected["tags"]
+    assert final_metadata["text_content"] == expected["text_content"]
+    assert final_metadata["is_processed"] == True
+    
+    logger.info("test_process_image_endpoint_mocked completed successfully")
 
 @pytest.mark.asyncio
 async def test_get_image_not_found(client, initialized_folder):

@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pathlib import Path
 import os
 import json
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 import traceback
-import imghdr
 from PIL import Image
+import hashlib
+import asyncio
 
 from ..core.logging import logger
 from ..models.schemas import (
@@ -28,7 +29,8 @@ from ..utils.helpers import (
     load_or_create_metadata, 
     create_image_info
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from ..config import settings
 
 # Create router
 router = APIRouter()
@@ -47,31 +49,21 @@ project_root = Path(__file__).parent.parent.parent.parent
 data_dir = project_root / "data"
 
 def get_vector_store() -> VectorStore:
-    """
-    Get the current vector store instance.
-    
-    Returns:
-        VectorStore instance
-    
-    Raises:
-        HTTPException: If no folder is selected
-    """
-    if router.vector_store is None:
-        raise HTTPException(status_code=400, detail="No folder selected")
+    """Get or create a VectorStore instance."""
+    if not hasattr(router, "vector_store"):
+        router.vector_store = None
     return router.vector_store
 
+def get_image_processor() -> ImageProcessor:
+    """Get or create an ImageProcessor instance."""
+    if not hasattr(router, "image_processor"):
+        router.image_processor = ImageProcessor()
+    return router.image_processor
+
 def get_current_folder() -> str:
-    """
-    Get the current folder path.
-    
-    Returns:
-        Current folder path
-    
-    Raises:
-        HTTPException: If no folder is selected
-    """
-    if router.current_folder is None:
-        raise HTTPException(status_code=400, detail="No folder selected")
+    """Get the current folder path."""
+    if not hasattr(router, "current_folder"):
+        router.current_folder = None
     return router.current_folder
 
 def search_images(query: str, metadata: Dict[str, Dict], vector_store: VectorStore) -> List[Dict]:
@@ -217,52 +209,74 @@ async def get_images(request: FolderRequest):
 @router.get("/image/{path:path}")
 async def get_image(path: str):
     """
-    Get an image file.
+    Serve an image file.
     
     Args:
-        path: Path to the image
+        path: Path to the image file
         
     Returns:
-        FileResponse object
-        
-    Raises:
-        HTTPException: If the image does not exist or there is an error retrieving the image
+        FileResponse containing the image
     """
     try:
-        folder_path = get_current_folder()
-        logger.debug(f"Getting image from folder: {folder_path}")
+        logger.info(f"Received request for image: {path}")
         
-        # Combine the base folder path with the relative image path
-        full_path = os.path.join(folder_path, path)
-        logger.debug(f"Full image path: {full_path}")
+        # Get the current folder path
+        current_folder = getattr(router, 'current_folder', None)
+        if not current_folder:
+            logger.error("No current folder set")
+            raise HTTPException(status_code=400, detail="No folder selected")
+            
+        logger.info(f"Current folder: {current_folder}")
         
-        if not os.path.exists(full_path):
-            logger.error(f"Image not found at path: {full_path}")
+        # Construct full path
+        full_path = Path(current_folder) / path
+        logger.info(f"Full image path: {full_path}")
+        
+        # Check if file exists
+        if not full_path.exists():
+            logger.error(f"Image file not found: {full_path}")
             raise HTTPException(status_code=404, detail="Image not found")
             
-        # Validate image format
+        # Check file permissions
+        try:
+            logger.info(f"Checking file permissions for: {full_path}")
+            logger.info(f"File is readable: {os.access(full_path, os.R_OK)}")
+            logger.info(f"File is executable: {os.access(full_path, os.X_OK)}")
+            logger.info(f"File stats: {os.stat(full_path)}")
+            logger.info(f"File size: {os.path.getsize(full_path)} bytes")
+        except Exception as e:
+            logger.error(f"Error checking file permissions: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error checking file permissions: {str(e)}")
+            
+        # Check if it's a file (not a directory)
+        if not full_path.is_file():
+            logger.error(f"Path is not a file: {full_path}")
+            raise HTTPException(status_code=400, detail="Path is not a file")
+            
+        # Check file extension
+        if full_path.suffix.lower() not in settings.SUPPORTED_EXTENSIONS:
+            logger.error(f"Unsupported file extension: {full_path.suffix}")
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+            
+        # Validate image format using PIL
         try:
             with Image.open(full_path) as img:
-                format = img.format.lower()
-                logger.info(f"Image format: {format}")
-                
-                # Convert RGBA to RGB if needed
-                if img.mode == 'RGBA':
-                    logger.info(f"Converting RGBA image to RGB")
-                    rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                    rgb_img.paste(img, mask=img.split()[3])
-                    
-                    # Save as temporary file
-                    import tempfile
-                    temp = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{format}')
-                    rgb_img.save(temp.name, format=format)
-                    return FileResponse(temp.name, media_type=f"image/{format}")
-                
-                # For other formats, serve directly
-                return FileResponse(full_path, media_type=f"image/{format}")
+                # Log image format and mode
+                logger.info(f"Image format: {img.format}")
+                logger.info(f"Image mode: {img.mode}")
+                logger.info(f"Image size: {img.size}")
+                # Try to verify the image
+                img.verify()
+                # Reset the file pointer after verify
+                img.seek(0)
         except Exception as e:
-            logger.error(f"Error validating image {full_path}: {str(e)}")
-            raise HTTPException(status_code=400, detail=f"Invalid image format: {str(e)}")
+            logger.error(f"Invalid image format: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid image format")
+            
+        logger.info(f"Serving image file: {full_path}")
+        response = FileResponse(full_path)
+        logger.info(f"Response headers: {response.headers}")
+        return response
             
     except HTTPException:
         raise
@@ -289,7 +303,11 @@ async def search_endpoint(
         HTTPException: If there is an error searching for images
     """
     try:
-        folder_path = Path(get_current_folder())
+        current_folder = get_current_folder()
+        if not current_folder:
+            raise HTTPException(status_code=400, detail="No folder selected")
+            
+        folder_path = Path(current_folder)
         
         # Load current metadata
         metadata_file = folder_path / "image_metadata.json"
@@ -306,6 +324,7 @@ async def search_endpoint(
         images = [ImageInfo(
             name=img["name"],
             path=img["path"],
+            url=f"/image/{img['path']}",  # Add the URL field
             description=img.get("description", ""),
             tags=img.get("tags", []),
             text_content=img.get("text_content", ""),
@@ -313,6 +332,8 @@ async def search_endpoint(
         ) for img in matching_images]
         
         return {"images": images}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error searching images: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error searching images: {str(e)}")
@@ -347,189 +368,59 @@ async def refresh_images():
         logger.error(f"Error refreshing images: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error refreshing images: {str(e)}")
 
-@router.post("/process-image", response_model=ProcessResponse)
+@router.post("/process-image", response_model=None)
 async def process_image(
-    request: ProcessImageRequest,
-    background_tasks: BackgroundTasks,
-    vector_store: VectorStore = Depends(get_vector_store),
+    request: Request,
+    image_processor: ImageProcessor = Depends(get_image_processor),
     use_queue: bool = False
-):
-    """
-    Process a single image.
-    
-    Args:
-        request: ProcessImageRequest object
-        background_tasks: BackgroundTasks for async processing
-        vector_store: VectorStore instance
-        use_queue: Whether to use the queue system
-        
-    Returns:
-        ProcessResponse object
-        
-    Raises:
-        HTTPException: If there is an error processing the image
-    """
-    if use_queue:
-        return await process_image_with_queue(request, background_tasks)
-    else:
-        return await process_image_legacy(request, background_tasks, vector_store)
-
-async def process_image_with_queue(
-    request: ProcessImageRequest,
-    background_tasks: BackgroundTasks
-):
-    """
-    Process a single image using the queue system.
-    
-    Args:
-        request: ProcessImageRequest object
-        background_tasks: BackgroundTasks for async processing
-        
-    Returns:
-        ProcessResponse object
-        
-    Raises:
-        HTTPException: If there is an error processing the image
-    """
-    if not router.processing_queue:
-        raise HTTPException(status_code=400, detail="Queue not initialized")
-    
-    logger.info(f"Processing image with queue: {request.image_path}")
-    
-    # Add the image to the queue
-    task = router.processing_queue.add_task(request.image_path)
-    
-    # Start processing the queue if it's not already processing
-    if not router.processing_queue.is_processing:
-        processor = QueueProcessor(router.processing_queue)
-        await processor.process_queue(background_tasks)
-    
-    # Create initial ImageInfo object
-    image_info = create_image_info(request.image_path, {request.image_path: {
-        "description": "",
-        "tags": [],
-        "text_content": "",
-        "is_processed": False
-    }})
-    
-    return {
-        "success": True,
-        "message": "Image added to processing queue",
-        "image": image_info
-    }
-
-async def process_image_legacy(
-    request: ProcessImageRequest,
-    background_tasks: BackgroundTasks,
-    vector_store: VectorStore
-):
-    """
-    Process a single image using the legacy system.
-    
-    Args:
-        request: ProcessImageRequest object
-        background_tasks: BackgroundTasks for async processing
-        vector_store: VectorStore instance
-        
-    Returns:
-        ProcessResponse object
-        
-    Raises:
-        HTTPException: If there is an error processing the image
-    """
-    # Check if processing should be stopped before we even start
-    logger.info(f"process_image_legacy called with should_stop_processing={router.should_stop_processing}")
-    if router.should_stop_processing:
-        logger.info("Processing already stopped before starting (should_stop_processing=True)")
-        return {
-            "success": False,
-            "message": "Processing stopped by user",
-            "image": None
-        }
-    
-    # Set is_processing first to avoid race conditions
-    logger.info(f"Setting is_processing to True (was {router.is_processing})")
-    router.is_processing = True
-    
+) -> Union[StreamingResponse, JSONResponse]:
+    """Process a single image and return its metadata."""
     try:
-        # Get the current folder path and join it with the image name
-        folder_path = Path(get_current_folder())
-        image_path = folder_path / request.image_path
+        # Parse request body
+        body = await request.json()
+        image_path = body.get("image_path")
+        if not image_path:
+            return JSONResponse(
+                status_code=200,
+                content={"success": False, "message": "image_path is required"}
+            )
         
+        # Convert to Path object and resolve relative to current folder
+        image_path = Path(get_current_folder()) / Path(image_path)
+        
+        # Ensure image exists
         if not image_path.exists():
-            logger.info(f"Image not found: {image_path}")
-            raise HTTPException(status_code=404, detail="Image not found")
+            logger.error(f"Image not found: {image_path}")
+            return JSONResponse(
+                status_code=200,
+                content={"success": False, "message": f"Image not found: {image_path}"}
+            )
         
-        # Process the image in the background
-        async def process_image_task():
+        async def process_and_stream():
             try:
-                logger.info(f"Starting background processing task, is_processing={router.is_processing}, should_stop_processing={router.should_stop_processing}")
+                # Initialize progress
+                yield json.dumps({"success": True, "progress": 0}) + "\n"
                 
-                # Check if we should stop before starting
-                if router.should_stop_processing:
-                    logger.info("Processing stopped before starting")
-                    router.is_processing = False
-                    return
+                # Process the image
+                async for update in image_processor.process_image(image_path):
+                    update["success"] = True
+                    yield json.dumps(update) + "\n"
                 
-                processor = ImageProcessor(stop_check=should_stop)
-                
-                try:
-                    metadata = await processor.process_image(image_path)
-                except Exception as e:
-                    if str(e) == "Processing stopped by user":
-                        logger.info("Processing stopped during image processing")
-                        router.is_processing = False  # Reset is_processing flag
-                        return
-                    else:
-                        raise
-                
-                # Check if processing should be stopped after processing
-                if router.should_stop_processing:
-                    logger.info("Processing stopped after processing image")
-                    router.is_processing = False  # Reset is_processing flag
-                    return
-                    
-                # Update metadata file
-                folder_path = Path(get_current_folder())
-                # Use the image filename as the key in metadata
-                image_filename = Path(request.image_path).name
-                update_image_metadata(folder_path, image_filename, metadata)
-                
-                # Update vector store
-                vector_store.add_or_update_image(request.image_path, metadata)
-                logger.info("Background processing completed successfully")
             except Exception as e:
-                logger.error(f"Error in background task: {str(e)}")
-            finally:
-                # Always reset is_processing to False when the task is done
-                logger.info(f"Resetting is_processing to False (was {router.is_processing})")
-                router.is_processing = False
+                logger.error(f"Error processing image: {str(e)}")
+                yield json.dumps({"success": False, "message": str(e)}) + "\n"
         
-        background_tasks.add_task(process_image_task)
-        logger.debug(f"Added background task, returning response with is_processing={router.is_processing}")
+        return StreamingResponse(
+            process_and_stream(),
+            media_type="application/x-ndjson"
+        )
         
-        # Create initial ImageInfo object
-        image_info = create_image_info(request.image_path, {request.image_path: {
-            "description": "",
-            "tags": [],
-            "text_content": "",
-            "is_processed": False
-        }})
-        
-        return {
-            "success": True,
-            "message": "Image processing started",
-            "image": image_info
-        }
     except Exception as e:
-        logger.error(f"Error processing image: {str(e)}")
-        logger.debug("Resetting is_processing to False due to error")
-        router.is_processing = False  # Reset on error
-        return {
-            "success": False,
-            "message": f"Error processing image: {str(e)}",
-            "image": None
-        }
+        logger.error(f"Error in process_image endpoint: {str(e)}")
+        return JSONResponse(
+            status_code=200,
+            content={"success": False, "message": str(e)}
+        )
 
 @router.post("/stop-processing")
 async def stop_processing():
@@ -642,41 +533,70 @@ async def update_metadata(
     Raises:
         HTTPException: If there is an error updating the metadata
     """
+    logger.info(f"Received metadata update request for image: {request.path}")
+    logger.info(f"Update data: description={request.description}, tags={request.tags}, text_content={request.text_content}")
+    
     try:
         folder_path = Path(get_current_folder())
+        logger.info(f"Current folder path: {folder_path}")
         
-        # Load current metadata
-        metadata_file = folder_path / "image_metadata.json"
+        # Get the project root directory (3 levels up from routes.py)
+        project_root = Path(__file__).parent.parent.parent.parent
+        data_dir = project_root / "data"
+        data_dir.mkdir(exist_ok=True)
+        logger.info(f"Data directory: {data_dir}")
+        
+        # Create a unique filename based on the folder path
+        folder_hash = hashlib.md5(str(folder_path).encode()).hexdigest()
+        metadata_file = data_dir / f"metadata_{folder_hash}.json"
+        logger.info(f"Metadata file path: {metadata_file}")
+        
         if not metadata_file.exists():
+            logger.error(f"Metadata file not found: {metadata_file}")
             raise HTTPException(status_code=400, detail="No metadata file found")
             
+        logger.info("Loading existing metadata")
         with open(metadata_file, 'r') as f:
             all_metadata = json.load(f)
+        logger.info(f"Loaded metadata with {len(all_metadata)} entries")
         
         # Check if image exists in metadata
         if request.path not in all_metadata:
+            logger.error(f"Image not found in metadata: {request.path}")
+            logger.error(f"Available paths: {list(all_metadata.keys())}")
             raise HTTPException(status_code=404, detail="Image not found in metadata")
         
+        logger.info("Updating metadata fields")
         # Update metadata
         if request.description is not None:
             all_metadata[request.path]["description"] = request.description
+            logger.info(f"Updated description: {request.description}")
         if request.tags is not None:
             all_metadata[request.path]["tags"] = request.tags
+            logger.info(f"Updated tags: {request.tags}")
         if request.text_content is not None:
             all_metadata[request.path]["text_content"] = request.text_content
+            logger.info(f"Updated text content: {request.text_content}")
         
         # Mark as processed
         all_metadata[request.path]["is_processed"] = True
+        logger.info("Marked image as processed")
         
         # Save updated metadata
+        logger.info("Saving updated metadata to file")
         with open(metadata_file, 'w') as f:
             json.dump(all_metadata, f, indent=4)
+        logger.info("Successfully saved metadata to file")
         
         # Update vector store
+        logger.info("Updating vector store")
         vector_store.add_or_update_image(request.path, all_metadata[request.path])
+        logger.info("Successfully updated vector store")
         
         # Create ImageInfo object
+        logger.info("Creating ImageInfo object")
         image_info = create_image_info(request.path, all_metadata)
+        logger.info("Successfully created ImageInfo object")
         
         return {
             "success": True,
@@ -685,26 +605,55 @@ async def update_metadata(
         }
     except HTTPException as e:
         # Re-raise HTTP exceptions
+        logger.error(f"HTTP Exception in update_metadata: {str(e)}")
         raise
     except Exception as e:
         logger.error(f"Error updating metadata: {str(e)}")
+        logger.error(f"Exception type: {type(e)}")
+        logger.error(f"Exception traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 class LogActionRequest(BaseModel):
     """Request model for logging user actions."""
     action: str
-    button: str
+    message: Optional[str] = None
+    button: Optional[str] = None
     tag: Optional[str] = None
     image: Optional[str] = None
+    error: Optional[dict] = None
+    model_config = ConfigDict(extra="allow")  # Allow additional fields for flexibility
 
 @router.post("/log-action")
 async def log_action(request: LogActionRequest):
-    """Log user actions for debugging."""
-    logger.info(f"USER ACTION: {request.action} - Button: {request.button}")
-    if request.tag:
-        logger.info(f"  Tag: {request.tag}")
-    if request.image:
-        logger.info(f"  Image: {request.image}")
+    """Log user actions and events from the frontend."""
+    if request.action == "ERROR":
+        if request.error:
+            logger.error(f"FRONTEND ERROR: {request.message}")
+            logger.error(f"Error details: {request.error}")
+        else:
+            logger.error(f"FRONTEND ERROR: {request.message}")
+    elif request.action == "PROCESSING":
+        logger.info(f"FRONTEND PROCESSING: {request.message}")
+    elif request.action == "METADATA":
+        logger.info(f"FRONTEND METADATA: {request.message}")
+    elif request.action == "BUTTON_CLICK":
+        log_msg = f"FRONTEND BUTTON CLICK: {request.button}"
+        if request.tag:
+            log_msg += f" - Tag: {request.tag}"
+        logger.info(log_msg)
+    else:
+        # Log any other actions
+        log_msg = f"FRONTEND {request.action}"
+        if request.message:
+            log_msg += f": {request.message}"
+        if request.button:
+            log_msg += f" - Button: {request.button}"
+        if request.tag:
+            log_msg += f" - Tag: {request.tag}"
+        if request.image:
+            log_msg += f" - Image: {request.image}"
+        logger.info(log_msg)
+    
     return {"success": True}
 
 # Function to check if processing should stop

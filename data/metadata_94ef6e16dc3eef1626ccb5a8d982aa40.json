@@ -1,0 +1,363 @@
+{
+    "2016-02-20_15-37-59.png": {
+        "description": "Save Dataset screen: Name, Location dropdown with 'home' selected and 'flattened categories', new space for testing folders highlighted.",
+        "tags": [
+            "data",
+            "database",
+            "interface",
+            "interface design",
+            "graphical user interface",
+            "new space",
+            "space",
+            "testing",
+            "testing environment",
+            "user interface"
+        ],
+        "text_content": "Save Dataset",
+        "is_processed": true
+    },
+    "2016-02-21_17-35-46.png": {
+        "description": "This screenshot depicts a web-based interface displaying four maps of the United States, each with a different color scheme and labeled as 'Fashion Geo', 'Fast Food Geo', 'Casinos Geo', and 'Beaches Geo'. The map colors correspond to states that meet certain criteria for each category.",
+        "tags": [
+            "#map",
+            "#infographic",
+            "#statistics",
+            "#location",
+            "#geography",
+            "#colorful",
+            "#graphical"
+        ],
+        "text_content": "Fashion Geo Number of Records 73 180,948 United States Fashion Geo Fast Food Geo Casinos Geo Beaches Geo United States",
+        "is_processed": true
+    },
+    "2016-03-20_15-31-37 copy.png": {
+        "description": "The image shows a black terminal window with white text, displaying the results of a ping test to the IP address 172.30.10.107. The output includes information such as the number of packets sent and received, packet loss percentage, and average latency.",
+        "tags": [
+            "text",
+            "white",
+            "black background",
+            "computer screen"
+        ],
+        "text_content": "Pinging h007.d.drem.io [172.30.10.107] with 32 bytes of data:\nReply from 172.30.10.107: bytes=32 time=41ms TTL=128\nReply from 172.30.10.107: bytes=32 time=47ms TTL=128\nReply from 172.30.10.107: bytes=32 time=38ms TTL=128\nPing statistics for 172.30.10.107:\nPackets: Sent = 4, Received = 4, Lost = 0 (0% loss).\nApproximate round trip times in milli-seconds:\nMinimum = 38ms, Maximum = 47ms, Average = 41ms",
+        "is_processed": true
+    },
+    "2016-03-21_22-37-03.png": {
+        "description": "The image depicts a computer pop-up window with the title 'Connect to New Source', featuring fields for source type, name, host, port and root path as well as URL and permission settings.",
+        "tags": [
+            "computer",
+            "software interface",
+            "greyish background",
+            "white text boxes",
+            "blank white text box"
+        ],
+        "text_content": "Connect to New Source",
+        "is_processed": true
+    },
+    "2016-03-20_08-59-55.png": {
+        "description": "This screenshot shows an error message displayed within the Dremio application when attempting to run a query, indicating that a server error has occurred.",
+        "tags": [
+            "dremio",
+            "software interface",
+            "data analysis tool"
+        ],
+        "text_content": "SQL editor",
+        "is_processed": true
+    },
+    "2016-02-21_22-53-01.png": {
+        "description": "The image depicts a screenshot of an Excel spreadsheet with a list of cities, their corresponding population figures, and the total population for each city. The data is organized into columns, with each row representing a different city. The first column lists the names of various cities in Las Vegas, Nevada. The second column shows the population figures for these cities, ranging from 0 to 3.7 million people. The third column displays the total population of the selected cities.",
+        "tags": [
+            "Filter",
+            "Computer screen",
+            "Grey background"
+        ],
+        "text_content": "Filter [City], Select from list, Custom value list, Use all, 1023 E Frye Rd",
+        "is_processed": true
+    },
+    "2016-02-21_16-02-10.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_18-45-39.png": {
+        "description": "The image shows a screenshot of an interactive graph that displays the number of Yelp reviews by category over time, with two graphs: Sheet 1 and Sheet 2. The top graph, Sheet 2, is categorized into 14 categories (with some categories overlapping), such as Restaurants and Shopping, while the bottom graph, Sheet 1, shows a bar chart broken down into months and years from January 2004 to November 2014.",
+        "tags": [
+            "bar",
+            "chart",
+            "diagram",
+            "graph",
+            "infographic",
+            "list",
+            "statistics"
+        ],
+        "text_content": "Sheet 2 Category Restaurants Shopping Food Beauty & Spas Nightlife Bars Health Medical Automotive Fashion Fast Food",
+        "is_processed": true
+    },
+    "2016-03-20_14-50-10 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-15-14.png": {
+        "description": "A screenshot of a command prompt window with the text 'dremio for tableau' and other lines of text, likely displaying a list of options or commands related to data preparation or analysis.",
+        "tags": [
+            "text",
+            "computer screen",
+            "blue background"
+        ],
+        "text_content": "drem-embed.bat - Shortcut",
+        "is_processed": true
+    },
+    "2016-02-21_18-31-16.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_14-50-10.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_22-07-00.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-19_18-50-38 copy.png": {
+        "description": "The image displays a Tableau error message indicating a communication issue with the data source 'business (mongo.academic.business)'.",
+        "tags": [
+            "error",
+            "data source",
+            "Tableau",
+            "communication",
+            "database",
+            "software",
+            "warning",
+            "technical",
+            "computer",
+            "monitoring"
+        ],
+        "text_content": "",
+        "is_processed": true
+    },
+    "2016-03-20_15-15-43.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-20_22-33-51 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_14-58-03.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-19_18-50-38.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-20_16-49-06.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_14-58-03 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-37-58.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_15-34-31.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_16-02-10 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_22-49-27.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-26_21-30-32.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-14-27 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-20_22-33-51.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_18-16-13.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-11-32 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-25-14.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-45-41.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_09-00-06.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_16-45-51 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_22-52-24.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-22_22-06-47.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-31-37.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-20_22-13-31.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-14-27.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-18-40.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_18-11-47.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-25-14 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-19_18-21-07 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-15-14 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_15-15-24.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_18-31-16 copy.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_16-45-51.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_18-11-59.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-19_18-21-07.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-03-20_15-11-32.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "2016-02-21_20-47-02.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    }
+}

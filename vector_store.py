@@ -1,3 +1,8 @@
+"""
+Vector store module for managing image metadata and similarity search.
+This module uses ChromaDB to store and retrieve vector embeddings of image metadata.
+"""
+
 import chromadb
 from chromadb.utils import embedding_functions
 from chromadb.config import Settings
@@ -5,11 +10,31 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import logging
 
+# Configure logger with module name
 logger = logging.getLogger(__name__)
 
 class VectorStore:
+    """
+    Manages vector storage and similarity search for image metadata.
+    
+    This class uses ChromaDB to:
+    1. Store vector embeddings of image metadata
+    2. Perform similarity searches
+    3. Maintain synchronization with metadata files
+    
+    Attributes:
+        client (PersistentClient): ChromaDB client instance
+        embedding_function (DefaultEmbeddingFunction): Function to generate embeddings
+        collection (Collection): ChromaDB collection for storing vectors
+    """
+    
     def __init__(self, persist_directory: str = ".vectordb"):
-        """Initialize ChromaDB client with persistence."""
+        """
+        Initialize ChromaDB client with persistence.
+        
+        Args:
+            persist_directory (str): Directory to store the vector database
+        """
         self.client = chromadb.PersistentClient(path=persist_directory, settings=Settings(anonymized_telemetry=False))
         
         # Use ChromaDB's default embedding function all-MiniLM-L6-v2
@@ -20,9 +45,24 @@ class VectorStore:
             name="image_metadata",
             embedding_function=self.embedding_function
         )
+        logger.info(f"Initialized VectorStore with persistence directory: {persist_directory}")
 
     def add_or_update_image(self, image_path: str, metadata: Dict) -> None:
-        """Add or update image metadata in the vector store."""
+        """
+        Add or update image metadata in the vector store.
+        
+        This method:
+        1. Combines text fields for embedding
+        2. Prepares metadata for storage
+        3. Updates existing entry or creates new one
+        
+        Args:
+            image_path (str): Path to the image file
+            metadata (Dict): Image metadata including description, tags, and text content
+            
+        Raises:
+            Exception: If there's an error adding/updating the vector store entry
+        """
         try:
             # Combine all text fields for embedding
             text_to_embed = f"{metadata.get('description', '')} {' '.join(metadata.get('tags', []))} {metadata.get('text_content', '')}"
@@ -42,12 +82,14 @@ class VectorStore:
             )
             
             if results and results['ids']:  # Document exists
+                logger.debug(f"Updating existing vector store entry for: {image_path}")
                 self.collection.update(
                     ids=[image_path],
                     documents=[text_to_embed],
                     metadatas=[meta_dict]
                 )
             else:  # Document doesn't exist
+                logger.debug(f"Creating new vector store entry for: {image_path}")
                 self.collection.add(
                     ids=[image_path],
                     documents=[text_to_embed],
@@ -61,7 +103,15 @@ class VectorStore:
             raise
 
     def delete_image(self, image_path: str) -> None:
-        """Delete image metadata from the vector store."""
+        """
+        Delete image metadata from the vector store.
+        
+        Args:
+            image_path (str): Path to the image file to delete
+            
+        Raises:
+            Exception: If there's an error deleting the vector store entry
+        """
         try:
             self.collection.delete(ids=[image_path])
             logger.info(f"Successfully deleted vector store entry for: {image_path}")
@@ -70,7 +120,21 @@ class VectorStore:
             raise
 
     def sync_with_metadata(self, folder_path: Path, metadata: Dict[str, Dict]) -> None:
-        """Synchronize vector store with metadata JSON."""
+        """
+        Synchronize vector store with metadata JSON.
+        
+        This method:
+        1. Gets all existing documents in vector store
+        2. Deletes documents that are in vector store but not in metadata
+        3. Adds or updates documents from metadata
+        
+        Args:
+            folder_path (Path): Path to the folder containing metadata
+            metadata (Dict[str, Dict]): Dictionary of image metadata
+            
+        Raises:
+            Exception: If there's an error synchronizing the vector store
+        """
         try:
             # Get all existing documents in vector store
             existing_docs = self.collection.get()
@@ -82,6 +146,7 @@ class VectorStore:
             # Delete documents that are in vector store but not in metadata
             ids_to_delete = existing_ids - metadata_ids
             if ids_to_delete:
+                logger.info(f"Deleting {len(ids_to_delete)} stale entries from vector store")
                 self.collection.delete(ids=list(ids_to_delete))
             
             # Add or update documents from metadata
@@ -95,7 +160,15 @@ class VectorStore:
             raise
 
     def get_metadata(self, image_path: str) -> Optional[Dict]:
-        """Retrieve metadata for a specific image."""
+        """
+        Retrieve metadata for a specific image.
+        
+        Args:
+            image_path (str): Path to the image file
+            
+        Returns:
+            Optional[Dict]: Image metadata if found, None otherwise
+        """
         try:
             result = self.collection.get(ids=[image_path])
             if result and result['metadatas']:
@@ -106,6 +179,7 @@ class VectorStore:
                     "text_content": metadata.get("text_content", ""),
                     "is_processed": metadata.get("is_processed", "False") == "True"
                 }
+            logger.debug(f"No metadata found for image: {image_path}")
             return None
         except Exception as e:
             logger.error(f"Error retrieving metadata from vector store: {str(e)}")
@@ -114,8 +188,18 @@ class VectorStore:
     def search_images(self, query: str, limit: int = 5) -> List[str]:
         """
         Search for images using vector similarity.
-        Returns a list of image paths ordered by relevance.
-        Only includes results with distance < 1.1 (higher similarity).
+        
+        This method:
+        1. Queries the collection using the provided search query
+        2. Filters results based on similarity threshold
+        3. Returns a list of image paths ordered by relevance
+        
+        Args:
+            query (str): Search query text
+            limit (int): Maximum number of results to return
+            
+        Returns:
+            List[str]: List of image paths ordered by relevance
         """
         try:
             # Query the collection
@@ -138,6 +222,7 @@ class VectorStore:
                         logger.debug(f"  Excluded: {image_id} (distance: {distance:.4f})")
             
             # Return only up to the requested limit
+            logger.info(f"Found {len(filtered_results)} matching images for query: {query}")
             return filtered_results[:limit]
             
         except Exception as e:

@@ -8,9 +8,63 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <!-- Add heroicons for nice UI icons -->
     <script src="https://unpkg.com/@heroicons/vue@2.0.18/24/solid/index.min.js"></script>
+    <style>
+        /* Notification animations */
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        .notification-enter-active {
+            animation: slideIn 0.3s ease-out;
+        }
+        .notification-leave-active {
+            animation: slideOut 0.3s ease-in;
+        }
+    </style>
 </head>
 <body class="bg-gray-50">
     <div id="app" class="min-h-screen">
+        <!-- Toaster Notification Component -->
+        <div class="fixed top-4 right-4 z-50 flex flex-col gap-2">
+            <transition-group name="notification">
+                <div v-for="notification in notifications" :key="notification.id"
+                    class="max-w-md p-4 rounded-lg shadow-lg flex items-start gap-3"
+                    :class="{
+                        'bg-red-50 border-l-4 border-red-500': notification.type === 'error',
+                        'bg-yellow-50 border-l-4 border-yellow-500': notification.type === 'warning',
+                        'bg-green-50 border-l-4 border-green-500': notification.type === 'success',
+                        'bg-blue-50 border-l-4 border-blue-500': notification.type === 'info'
+                    }">
+                    <div class="flex-shrink-0">
+                        <div v-if="notification.type === 'error'" class="text-red-500">❌</div>
+                        <div v-if="notification.type === 'warning'" class="text-yellow-500">⚠️</div>
+                        <div v-if="notification.type === 'success'" class="text-green-500">✅</div>
+                        <div v-if="notification.type === 'info'" class="text-blue-500">ℹ️</div>
+                    </div>
+                    <div class="flex-1 pr-4">
+                        <p class="font-semibold" :class="{
+                            'text-red-700': notification.type === 'error',
+                            'text-yellow-700': notification.type === 'warning',
+                            'text-green-700': notification.type === 'success',
+                            'text-blue-700': notification.type === 'info'
+                        }">{{ notification.title }}</p>
+                        <p class="text-sm" :class="{
+                            'text-red-600': notification.type === 'error',
+                            'text-yellow-600': notification.type === 'warning',
+                            'text-green-600': notification.type === 'success',
+                            'text-blue-600': notification.type === 'info'
+                        }">{{ notification.message }}</p>
+                    </div>
+                    <button @click="dismissNotification(notification.id)" class="text-gray-500 hover:text-gray-700">
+                        <span>×</span>
+                    </button>
+                </div>
+            </transition-group>
+        </div>
         <!-- Initial Select Folder View -->
         <div v-if="!folderOpened" class="h-screen flex flex-col items-center justify-center">
             <div class="text-center">
@@ -214,6 +268,18 @@
                             {{ selectedImage.processing ? 'Processing...' : 'Process Image' }}
                         </button>
                         
+                        <!-- Add progress bar when processing -->
+                        <div v-if="selectedImage.processing" class="mt-2">
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                     :style="{ width: `${selectedImage.progress * 100}%` }">
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-600 text-center mt-1">
+                                {{ Math.round(selectedImage.progress * 100) }}% Complete
+                            </p>
+                        </div>
+
                         <div>
                             <h4 class="font-medium mb-2">Image Path</h4>
                             <p class="text-sm text-gray-600 break-all font-mono">
@@ -262,7 +328,7 @@
                         <div>
                             <h4 class="font-medium mb-2">Text in Image</h4>
                             <textarea
-                                v-model="selectedImage.textContent"
+                                v-model="selectedImage.text_content"
                                 class="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 rows="3"
                                 placeholder="Enter text content..."
@@ -312,70 +378,116 @@
                 const confirmMessage = ref('')
                 const queueStatus = ref(null)
                 
+                // Notification system
+                const notifications = ref([]);
+                let notificationIdCounter = 0;
+                
+                // Notification helper functions
+                const showNotification = (type, title, message, duration = 5000) => {
+                    const id = notificationIdCounter++;
+                    const notification = { id, type, title, message };
+                    notifications.value.push(notification);
+                    
+                    // Auto-dismiss after duration (unless it's 0, which means don't auto-dismiss)
+                    if (duration > 0) {
+                        setTimeout(() => {
+                            dismissNotification(id);
+                        }, duration);
+                    }
+                    
+                    return id;
+                };
+                
+                const dismissNotification = (id) => {
+                    const index = notifications.value.findIndex(n => n.id === id);
+                    if (index !== -1) {
+                        notifications.value.splice(index, 1);
+                    }
+                };
+                
+                // Convenience methods for different notification types
+                const showError = (title, message, duration = 8000) => {
+                    // Handle array of errors
+                    if (Array.isArray(message)) {
+                        message = message.map(err => {
+                            if (typeof err === 'string') return err;
+                            return err.message || err.detail || JSON.stringify(err);
+                        }).join(', ');
+                    }
+                    // Handle object errors
+                    else if (typeof message === 'object' && message !== null) {
+                        message = message.message || message.detail || JSON.stringify(message);
+                    }
+                    return showNotification('error', title, message, duration);
+                }
+                
+                const showWarning = (title, message, duration = 6000) => 
+                    showNotification('warning', title, message, duration);
+                
+                const showSuccess = (title, message, duration = 4000) => 
+                    showNotification('success', title, message, duration);
+                
+                const showInfo = (title, message, duration = 4000) => 
+                    showNotification('info', title, message, duration);
+                
+                // Single logToServer implementation
+                const logToServer = async (action, details) => {
+                    try {
+                        await fetch('/log-action', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: action,
+                                ...details
+                            })
+                        });
+                    } catch (err) {
+                        // If we can't log to server, there's not much we can do
+                    }
+                }
+
+                // Standardize button click logging
+                const logButtonClick = async (button, details = {}) => {
+                    await logToServer('BUTTON_CLICK', { button, ...details });
+                }
+
                 const openFolder = async () => {
                     if (!folderPath.value) {
-                        alert('Please enter a folder path')
-                        return
+                        showError('Validation Error', 'Please enter a folder path');
+                        return;
                     }
 
-                    // Log button click to server
-                    await fetch('/log-action', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'BUTTON_CLICK', button: 'Open Folder' })
-                    });
-
-                    isLoading.value = true
-                    loadingStatus.value = 'Initializing...'
+                    isLoading.value = true;
+                    loadingStatus.value = 'Opening folder...';
                     
                     try {
-                        // First make a quick check if this is first-time initialization
-                        const initCheck = await fetch('/check-init-status')
-                        const initStatus = await initCheck.json()
-                        
-                        if (initStatus.needs_init) {
-                            loadingStatus.value = 'Downloading embedding model (this may take a few minutes)...'
-                        }
-
-                        // Use relative URL
                         const response = await fetch('/images', {
                             method: 'POST',
                             headers: {
-                                'Content-Type': 'application/json',
+                                'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify({
-                                folder_path: folderPath.value
-                            })
-                        })
-
+                            body: JSON.stringify({ folder_path: folderPath.value })
+                        });
+                        
                         if (!response.ok) {
-                            throw new Error('Failed to fetch images')
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to open folder');
                         }
-
-                        loadingStatus.value = 'Loading images...'
-                        const data = await response.json()
-                        images.value = data.images.map(img => ({
-                            name: img.name,
-                            path: img.path,
-                            url: `/image/${encodeURIComponent(img.path)}`,
-                            description: img.description || '',
-                            tags: img.tags || [],
-                            textContent: img.text_content || '',
-                            is_processed: Boolean(
-                                img.description ||
-                                (img.tags && img.tags.length) ||
-                                img.text_content
-                            )
-                        }))
-
-                        folderOpened.value = true
-                        console.log('Found images:', images.value.length)
+                        
+                        const data = await response.json();
+                        images.value = data.images;
+                        folderOpened.value = true;
+                        showSuccess('Folder Opened', `Found ${images.value.length} images`);
+                        
+                        // Initialize queue status if using queue
+                        if (useQueue.value) {
+                            await refreshQueueStatus();
+                        }
                     } catch (err) {
-                        console.error('Error accessing folder:', err)
-                        alert('Error accessing folder: ' + err.message)
+                        showError('Error Opening Folder', err.message);
                     } finally {
-                        isLoading.value = false
-                        loadingStatus.value = ''
+                        isLoading.value = false;
+                        loadingStatus.value = '';
                     }
                 }
 
@@ -385,110 +497,69 @@
                 }
 
                 const searchImages = async () => {
+                    if (!searchQuery.value.trim()) {
+                        images.value.sort((a, b) => a.name.localeCompare(b.name));
+                        return;
+                    }
+                    
+                    isLoading.value = true;
+                    loadingStatus.value = 'Searching...';
+                    
                     try {
-                        // Log button click to server
-                        await fetch('/log-action', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'BUTTON_CLICK', button: 'Search' })
-                        });
-
                         const response = await fetch('/search', {
                             method: 'POST',
                             headers: {
-                                'Content-Type': 'application/json',
+                                'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify({
-                                query: searchQuery.value
-                            })
-                        })
-
+                            body: JSON.stringify({ query: searchQuery.value })
+                        });
+                        
                         if (!response.ok) {
-                            throw new Error('Failed to search images')
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Search failed');
                         }
-
-                        const data = await response.json()
-                        if (data.images.length === 0) {
-                            // Handle no results gracefully
-                            alert('No images found matching your search criteria')
-                            return
-                        }
-
-                        images.value = data.images.map(img => ({
-                            name: img.name,
-                            path: img.path,
-                            // Use relative URL
-                            url: `/image/${encodeURIComponent(img.path)}`,
-                            description: img.description || '',
-                            tags: img.tags || [],
-                            textContent: img.text_content || '',
-                            is_processed: Boolean(
-                                img.description ||
-                                (img.tags && img.tags.length) ||
-                                img.text_content
-                            )
-                        }))
-
-                        console.log('Searched images:', images.value.length)
+                        
+                        const data = await response.json();
+                        images.value = data.images;
+                        showInfo('Search Results', `Found ${images.value.length} matching images`);
                     } catch (err) {
-                        console.error('Error searching images:', err)
-                        alert('Error searching images: ' + err.message)
+                        showError('Search Error', err.message);
+                    } finally {
+                        isLoading.value = false;
+                        loadingStatus.value = '';
                     }
                 }
 
                 const refreshImages = async () => {
+                    isLoading.value = true;
+                    loadingStatus.value = 'Refreshing images...';
+                    
                     try {
-                        // Log button click to server
-                        await fetch('/log-action', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'BUTTON_CLICK', button: 'Refresh' })
+                        const response = await fetch('/refresh', {
+                            method: 'POST'
                         });
-
-                        // Use the images endpoint directly
-                        const response = await fetch('/images', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                folder_path: folderPath.value
-                            })
-                        })
-
+                        
                         if (!response.ok) {
-                            throw new Error('Failed to refresh images')
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to refresh');
                         }
-
-                        const data = await response.json()
-                        images.value = data.images.map(img => ({
-                            name: img.name,
-                            path: img.path,
-                            // Use relative URL
-                            url: `/image/${encodeURIComponent(img.path)}`,
-                            description: img.description || '',
-                            tags: img.tags || [],
-                            textContent: img.text_content || '',
-                            is_processed: Boolean(
-                                img.description ||
-                                (img.tags && img.tags.length) ||
-                                img.text_content
-                            )
-                        }))
-
-                        console.log('Refreshed images:', images.value.length)
+                        
+                        const data = await response.json();
+                        images.value = data.images;
+                        showSuccess('Refresh Complete', `Found ${images.value.length} images`);
                     } catch (err) {
-                        console.error('Error refreshing images:', err)
-                        alert('Error refreshing images: ' + err.message)
+                        showError('Refresh Error', err.message);
+                    } finally {
+                        isLoading.value = false;
+                        loadingStatus.value = '';
                     }
                 }
 
                 const processImage = async (image) => {
-                    // Set processing state
                     image.processing = true;
+                    image.progress = 0;  // Initialize progress
                     
                     try {
-                        // Use queue-based or legacy processing based on feature flag
                         const url = useQueue.value ? 
                             `/process-image?use_queue=true` : 
                             `/process-image`;
@@ -501,46 +572,74 @@
                         
                         if (!response.ok) {
                             const errorData = await response.json();
-                            console.log('Image processing failed:', errorData);
+                            await logToServer('ERROR', { message: `Image processing failed: ${JSON.stringify(errorData)}` });
                             throw new Error(errorData.detail || 'Failed to process image');
                         }
                         
-                        const data = await response.json();
+                        // Read the response as a stream
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = '';
                         
-                        // Update image with new data
-                        if (data.image) {
-                            Object.assign(image, data.image);
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            
+                            // Decode the chunk and add it to our buffer
+                            buffer += decoder.decode(value, { stream: true });
+                            
+                            // Process any complete lines in the buffer
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+                            
+                            for (const line of lines) {
+                                if (!line.trim()) continue;
+                                
+                                try {
+                                    const data = JSON.parse(line);
+                                    if (data.progress !== undefined) {
+                                        image.progress = data.progress;
+                                        await logToServer('PROCESSING', { message: `Progress update: ${Math.round(data.progress * 100)}%` });
+                                    }
+                                    if (data.image) {
+                                        // Update the image in the modal
+                                        Object.assign(image, data.image);
+                                        
+                                        // Update the image in the images array
+                                        const imageIndex = images.value.findIndex(img => img.path === image.path);
+                                        if (imageIndex !== -1) {
+                                            Object.assign(images.value[imageIndex], data.image);
+                                        }
+                                        
+                                        // Update original data for the modal
+                                        if (selectedImage.value && selectedImage.value.path === image.path) {
+                                            originalImageData.value = JSON.parse(JSON.stringify(data.image));
+                                        }
+                                    }
+                                } catch (err) {
+                                    await logToServer('ERROR', { message: `Error parsing progress update: ${err.message}` });
+                                }
+                            }
                         }
                         
-                        return data;
+                        showSuccess('Processing Complete', `Successfully processed ${image.name}`);
                     } catch (err) {
-                        console.error('Error processing image:', err);
+                        await logToServer('ERROR', { message: `Error processing image: ${err.message}` });
+                        showError('Processing Error', `Failed to process ${image.name}: ${err.message}`);
                         throw err;
                     } finally {
-                        // Clear processing state
                         image.processing = false;
+                        image.progress = 0;  // Reset progress
                     }
                 }
 
                 const processAllImages = async () => {
-                    // Log button click to server
-                    await fetch('/log-action', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            action: 'BUTTON_CLICK', 
-                            button: processingAll.value ? 'Stop Processing' : 'Process All',
-                            useQueue: useQueue.value
-                        })
-                    });
+                    await logButtonClick(processingAll.value ? 'Stop Processing' : 'Process All', { useQueue: useQueue.value });
 
-                    // If already processing, stop it
                     if (processingAll.value) {
                         try {
-                            console.log('Attempting to stop processing...');
-                            const response = await fetch('/stop-processing', {
-                                method: 'POST'
-                            });
+                            await logToServer('PROCESSING', { message: 'Attempting to stop processing...' });
+                            const response = await fetch('/stop-processing', { method: 'POST' });
                             
                             if (!response.ok) {
                                 throw new Error('Failed to stop processing');
@@ -549,13 +648,12 @@
                             processingAll.value = false;
                             return;
                         } catch (err) {
-                            console.error('Error stopping processing:', err);
+                            await logToServer('ERROR', { message: `Error stopping processing: ${err.message}` });
                             return;
                         }
                     }
 
-                    // Reset processing state before starting
-                    console.log('Calling force-reset-processing-state...');
+                    await logToServer('PROCESSING', { message: 'Calling force-reset-processing-state...' });
                     const resetResponse = await fetch('/force-reset-processing-state', {
                         method: 'POST'
                     });
@@ -564,19 +662,17 @@
                         throw new Error('Failed to reset processing state');
                     }
 
-                    // Start processing all images
                     processingAll.value = true;
-                    console.log('Set processingAll to true');
+                    await logToServer('PROCESSING', { message: 'Set processingAll to true' });
                     
-                    // Filter out macOS system files and unprocessed images
                     const unprocessedImages = images.value.filter(img => 
                         !img.is_processed && 
                         !img.processing && 
-                        !img.name.startsWith('._')  // Filter out macOS system files
+                        !img.name.startsWith('._')
                     );
                     
                     if (unprocessedImages.length === 0) {
-                        console.log('No unprocessed images found!');
+                        await logToServer('PROCESSING', { message: 'No unprocessed images found!' });
                         processingAll.value = false;
                         return;
                     }
@@ -595,9 +691,9 @@
 
                 const processAllImagesWithQueue = async (unprocessedImages) => {
                     try {
-                        console.log(`Adding ${unprocessedImages.length} images to queue...`);
+                        await logToServer('PROCESSING', { message: `Adding ${unprocessedImages.length} images to queue...` });
+                        showInfo('Queue Processing', `Adding ${unprocessedImages.length} images to processing queue...`);
                         
-                        // Add all images to the queue
                         for (const image of unprocessedImages) {
                             try {
                                 const response = await fetch('/queue/add', {
@@ -611,56 +707,46 @@
                                     throw new Error(errorData.detail || 'Failed to add image to queue');
                                 }
                             } catch (err) {
-                                console.error(`Failed to add ${image.name} to queue:`, err);
+                                await logToServer('ERROR', { message: `Failed to add ${image.name} to queue: ${err.message}` });
                                 failedImages.value.push(image.name);
+                                showWarning('Queue Addition Error', `Failed to add ${image.name} to queue: ${err.message}`);
                             }
                         }
                         
-                        // Start processing the queue
-                        const startResponse = await fetch('/queue/process', {
-                            method: 'POST'
-                        });
+                        const startResponse = await fetch('/queue/process', { method: 'POST' });
                         
                         if (!startResponse.ok) {
                             throw new Error('Failed to start queue processing');
                         }
                         
-                        console.log('Queue processing started');
+                        await logToServer('PROCESSING', { message: 'Queue processing started' });
+                        showSuccess('Processing Started', 'Queue processing has started');
                         
-                        // Poll for queue status until complete
                         const pollInterval = setInterval(async () => {
                             try {
-                                if (!processingAll.value) {
-                                    // User stopped processing
-                                    clearInterval(pollInterval);
-                                    await fetch('/queue/stop', { method: 'POST' });
-                                    return;
-                                }
-                                
                                 const statusResponse = await fetch('/queue/status?detailed=true');
                                 if (!statusResponse.ok) {
                                     throw new Error('Failed to get queue status');
                                 }
                                 
                                 const status = await statusResponse.json();
+                                queueStatus.value = status;
                                 
-                                // Update progress
-                                processedCount.value = status.history_length;
+                                currentImageName.value = status.current_task ? 
+                                    status.current_task.image_path.split('/').pop() : 
+                                    'Waiting for next image...';
+                                    
+                                processedCount.value = status.history.length;
+                                totalToProcess.value = status.history.length + status.queue_length + (status.is_processing ? 1 : 0);
                                 
-                                if (status.current_task) {
-                                    currentImageName.value = status.current_task.image_path.split('/').pop();
-                                }
-                                
-                                // Check if processing is complete
                                 if (!status.is_processing && status.queue_length === 0) {
                                     clearInterval(pollInterval);
                                     processingAll.value = false;
                                     
-                                    // Count failed images
                                     const failedCount = status.history.filter(task => task.status === 'failed').length;
                                     if (failedCount > 0) {
-                                        console.log(`Processing complete with ${failedCount} failures`);
-                                        // Add failed image names to failedImages
+                                        await logToServer('PROCESSING', { message: `Processing complete with ${failedCount} failures` });
+                                        showWarning('Processing Complete', `Processing completed with ${failedCount} failures`);
                                         status.history.forEach(task => {
                                             if (task.status === 'failed') {
                                                 const imageName = task.image_path.split('/').pop();
@@ -670,18 +756,20 @@
                                             }
                                         });
                                     } else {
-                                        console.log('All images processed successfully!');
+                                        await logToServer('PROCESSING', { message: 'All images processed successfully!' });
+                                        showSuccess('Processing Complete', 'All images processed successfully!');
                                     }
                                     
-                                    // Refresh images to show updated status
                                     await refreshImages();
                                 }
                             } catch (err) {
-                                console.error('Error polling queue status:', err);
+                                await logToServer('ERROR', { message: `Error polling queue status: ${err.message}` });
+                                showError('Polling Error', `Error checking queue status: ${err.message}`);
                             }
                         }, 1000);
                     } catch (err) {
-                        console.error('Error in queue processing:', err);
+                        await logToServer('ERROR', { message: `Error in queue processing: ${err.message}` });
+                        showError('Queue Error', `Error in queue processing: ${err.message}`);
                         processingAll.value = false;
                     }
                 }
@@ -690,7 +778,8 @@
                     try {
                         for (const image of unprocessedImages) {
                             if (!processingAll.value) {
-                                console.log('Processing stopped by user');
+                                await logToServer('PROCESSING', { message: 'Processing stopped by user' });
+                                showInfo('Processing Stopped', 'Processing stopped by user');
                                 break;
                             }
 
@@ -700,31 +789,38 @@
                                 
                                 if (!response || !response.success) {
                                     if (response && response.message === 'Processing stopped by user') {
+                                        showInfo('Processing Stopped', 'Processing stopped by user');
                                         break;
                                     }
                                     throw new Error(response ? response.message : 'Failed to process image');
                                 }
                                 
                                 processedCount.value++;
-                                console.log(`Successfully processed ${image.name}`);
+                                await logToServer('PROCESSING', { message: `Successfully processed ${image.name}` });
                             } catch (err) {
                                 failedImages.value.push(image.name);
-                                console.error(`Failed to process ${image.name}:`, err);
-                                // Continue with next image unless stopped
+                                await logToServer('ERROR', { message: `Failed to process ${image.name}: ${err.message}` });
+                                showError('Processing Error', `Failed to process ${image.name}: ${err.message}`);
                                 if (err.message === 'Processing stopped by user') {
                                     break;
                                 }
                             }
                         }
+                    } catch (err) {
+                        await logToServer('ERROR', { message: `Error in batch processing: ${err.message}` });
+                        showError('Processing Error', `Batch processing error: ${err.message}`);
                     } finally {
                         processingAll.value = false;
-                        console.log('Reset processingAll to false in finally block');
+                        await logToServer('PROCESSING', { message: 'Reset processingAll to false in finally block' });
                         if (failedImages.value.length > 0) {
-                            console.log(`Processing complete with ${failedImages.value.length} failures`);
+                            await logToServer('PROCESSING', { message: `Processing complete with ${failedImages.value.length} failures` });
+                            showWarning('Processing Complete', `Processing completed with ${failedImages.value.length} failures`);
                         } else if (processedCount.value < totalToProcess.value) {
-                            console.log('Processing stopped by user');
+                            await logToServer('PROCESSING', { message: 'Processing stopped by user' });
+                            showInfo('Processing Stopped', 'Processing stopped by user');
                         } else {
-                            console.log('All images processed successfully!');
+                            await logToServer('PROCESSING', { message: 'All images processed successfully!' });
+                            showSuccess('Processing Complete', 'All images processed successfully!');
                         }
                     }
                 }
@@ -735,83 +831,82 @@
                 })
 
                 const saveMetadata = async () => {
-                    if (!selectedImage.value) return
+                    if (!selectedImage.value) {
+                        await logToServer('ERROR', { message: 'No image selected for metadata update' });
+                        return;
+                    }
                     
-                    // Log button click to server
-                    await fetch('/log-action', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'BUTTON_CLICK', button: 'Save Changes' })
-                    });
+                    saving.value = true;
+                    await logToServer('METADATA', { message: `Saving metadata for image: ${selectedImage.value.path}` });
                     
-                    saving.value = true
                     try {
+                        const metadata = {
+                            path: selectedImage.value.path,
+                            description: selectedImage.value.description,
+                            tags: selectedImage.value.tags || [],
+                            text_content: selectedImage.value.text_content || ''
+                        };
+                        await logToServer('METADATA', { message: `Prepared metadata: ${JSON.stringify(metadata)}` });
+                        
                         const response = await fetch('/update-metadata', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                path: selectedImage.value.path,
-                                description: selectedImage.value.description,
-                                tags: selectedImage.value.tags,
-                                text_content: selectedImage.value.textContent
-                            })
-                        })
-
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(metadata)
+                        });
+                        
+                        await logToServer('METADATA', { message: `Update metadata response status: ${response.status}` });
+                        
                         if (!response.ok) {
-                            throw new Error('Failed to save metadata')
+                            const errorData = await response.json();
+                            await logToServer('ERROR', { message: `Error response data: ${JSON.stringify(errorData)}` });
+                            let errorMessage;
+                            if (typeof errorData === 'string') {
+                                errorMessage = errorData;
+                            } else if (errorData.detail) {
+                                if (Array.isArray(errorData.detail)) {
+                                    errorMessage = errorData.detail.map(err => err.msg).join(', ');
+                                } else {
+                                    errorMessage = errorData.detail;
+                                }
+                            } else {
+                                errorMessage = 'Failed to save changes';
+                            }
+                            throw new Error(errorMessage);
                         }
-
-                        // Update the image in the main images array
-                        const index = images.value.findIndex(img => img.path === selectedImage.value.path)
-                        if (index !== -1) {
-                            Object.assign(images.value[index], {
-                                description: selectedImage.value.description,
-                                tags: selectedImage.value.tags,
-                                textContent: selectedImage.value.textContent,
-                                is_processed: Boolean(
-                                    selectedImage.value.description ||
-                                    (selectedImage.value.tags && selectedImage.value.tags.length) ||
-                                    selectedImage.value.textContent
-                                )
-                            })
-                        }
-
-                        // Update original data
-                        originalImageData.value = JSON.parse(JSON.stringify(selectedImage.value))
-                        alert('Changes saved successfully!')
+                        
+                        const responseData = await response.json();
+                        await logToServer('METADATA', { message: `Update metadata response data: ${JSON.stringify(responseData)}` });
+                        
+                        originalImageData.value = JSON.parse(JSON.stringify(selectedImage.value));
+                        await logToServer('METADATA', { message: 'Updated original data with new values' });
+                        
+                        showSuccess('Changes Saved', 'Changes saved successfully!');
+                        selectedImage.value = null;  // Close the modal after successful save
                     } catch (err) {
-                        console.error('Error saving metadata:', err)
-                        alert('Error saving metadata: ' + err.message)
+                        await logToServer('ERROR', { 
+                            message: `Error saving metadata: ${err.message}`,
+                            error: {
+                                name: err.name,
+                                message: err.message,
+                                stack: err.stack,
+                                cause: err.cause
+                            }
+                        });
+                        showError('Error Saving Metadata', err.message);
                     } finally {
-                        saving.value = false
+                        saving.value = false;
                     }
                 }
 
-                const resetChanges = () => {
+                const resetChanges = async () => {
                     if (!selectedImage.value || !originalImageData.value) return
-                    
-                    // Log button click to server
-                    fetch('/log-action', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'BUTTON_CLICK', button: 'Reset Changes' })
-                    });
-                    
+                    await logButtonClick('Reset Changes');
                     Object.assign(selectedImage.value, JSON.parse(JSON.stringify(originalImageData.value)))
                 }
 
-                const addTag = () => {
+                const addTag = async () => {
                     if (!newTag.value.trim()) return
-                    
-                    // Log button click to server
-                    fetch('/log-action', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'BUTTON_CLICK', button: 'Add Tag', tag: newTag.value.trim() })
-                    });
-                    
+                    await logButtonClick('Add Tag', { tag: newTag.value.trim() });
                     if (!selectedImage.value.tags) {
                         selectedImage.value.tags = []
                     }
@@ -821,14 +916,8 @@
                     newTag.value = ''
                 }
 
-                const removeTag = (index) => {
-                    // Log button click to server
-                    fetch('/log-action', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'BUTTON_CLICK', button: 'Remove Tag', tag: selectedImage.value.tags[index] })
-                    });
-                    
+                const removeTag = async (index) => {
+                    await logButtonClick('Remove Tag', { tag: selectedImage.value.tags[index] });
                     selectedImage.value.tags.splice(index, 1)
                 }
 
@@ -837,7 +926,7 @@
                     return Boolean(
                         selectedImage.value.description ||
                         (selectedImage.value.tags && selectedImage.value.tags.length) ||
-                        selectedImage.value.textContent
+                        selectedImage.value.text_content
                     )
                 })
 
@@ -851,7 +940,7 @@
                         
                         queueStatus.value = await response.json();
                     } catch (err) {
-                        console.error('Error getting queue status:', err);
+                        await logToServer('ERROR', { message: `Error getting queue status: ${err.message}` });
                     }
                 }
                 
@@ -866,8 +955,10 @@
                         }
                         
                         await refreshQueueStatus();
+                        showSuccess('Queue Cleared', 'Processing queue has been cleared');
                     } catch (err) {
-                        console.error('Error clearing queue:', err);
+                        await logToServer('ERROR', { message: `Error clearing queue: ${err.message}` });
+                        showError('Queue Error', `Failed to clear queue: ${err.message}`);
                     }
                 }
                 
@@ -882,8 +973,10 @@
                         }
                         
                         await refreshQueueStatus();
+                        showInfo('Processing Started', 'Queue processing has started');
                     } catch (err) {
-                        console.error('Error starting queue processing:', err);
+                        await logToServer('ERROR', { message: `Error starting queue processing: ${err.message}` });
+                        showError('Queue Error', `Failed to start processing: ${err.message}`);
                     }
                 }
                 
@@ -898,8 +991,10 @@
                         }
                         
                         await refreshQueueStatus();
+                        showInfo('Processing Stopped', 'Queue processing has been stopped');
                     } catch (err) {
-                        console.error('Error stopping queue processing:', err);
+                        await logToServer('ERROR', { message: `Error stopping queue processing: ${err.message}` });
+                        showError('Queue Error', `Failed to stop processing: ${err.message}`);
                     }
                 }
                 
@@ -957,7 +1052,13 @@
                     useQueue,
                     showConfirmDialog,
                     confirmAction,
-                    confirmMessage
+                    confirmMessage,
+                    notifications,
+                    dismissNotification,
+                    showError,
+                    showWarning,
+                    showSuccess,
+                    showInfo
                 }
             }
         }).mount('#app')

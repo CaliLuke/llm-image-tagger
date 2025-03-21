@@ -1,0 +1,55 @@
+{
+    "test_rgb.jpg": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_image.png": {
+        "description": "Updated description",
+        "tags": [
+            "test",
+            "updated"
+        ],
+        "text_content": "Updated text",
+        "is_processed": true
+    },
+    "invalid.jpg": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_rgba.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_image_2.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_image_0.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "test_image_1.png": {
+        "description": "",
+        "tags": [],
+        "text_content": "",
+        "is_processed": false
+    },
+    "irrelevant.png": {
+        "description": "An unrelated image",
+        "tags": [
+            "unrelated"
+        ],
+        "text_content": "",
+        "is_processed": true
+    }
+}

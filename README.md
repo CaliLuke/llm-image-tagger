@@ -52,6 +52,10 @@ The application provides an intuitive way to organize and search through your im
   - Extraction of image content and style information
   - Text extraction from images
   - Interruptible batch processing with progress tracking
+  - Real-time progress updates for each processing step:
+    - Description generation (0-33%)
+    - Tag extraction (33-67%)
+    - Text content analysis (67-100%)
 
 - **Vector Database Storage**:
   - Efficient storage using ChromaDB
@@ -93,6 +97,27 @@ The application provides an intuitive way to organize and search through your im
 - ChromaDB for vector storage and similarity search
 - Asynchronous image processing with stop/resume capability
 
+### Image Processing Details
+
+The application processes each image in three distinct steps, providing real-time progress updates throughout:
+
+1. **Description Generation (0-33%)**
+   - Sends the image to Ollama with a prompt for a concise description
+   - Returns a structured description in JSON format
+   - Progress updates reflect both step completion and Ollama's processing status
+
+2. **Tag Extraction (33-67%)**
+   - Analyzes the image for relevant tags (objects, styles, colors, etc.)
+   - Generates 5-10 descriptive tags in JSON format
+   - Progress updates combine step position and Ollama's processing status
+
+3. **Text Content Analysis (67-100%)**
+   - Detects and extracts any visible text in the image
+   - Returns a structured response with text content and presence flag
+   - Final progress update (100%) includes complete metadata
+
+Each step yields progress updates that are scaled within its range, ensuring smooth progress tracking in the UI. The process can be interrupted at any point, and all progress is persisted to enable resuming from the last completed step.
+
 ## Prerequisites
 
 - **Python 3.11+**: Ensure Python 3.11 or newer is installed on your system
@@ -109,7 +134,13 @@ llm-image-tagger/
 ├── backend/                   # Backend code
 │   ├── app/                   # Application package
 │   │   ├── api/              # API endpoints
-│   │   │   ├── routes.py     # API routes
+│   │   │   ├── routers/      # API route modules
+│   │   │   │   ├── __init__.py  # Router initialization
+│   │   │   │   ├── search.py    # Search endpoints
+│   │   │   │   ├── queue.py     # Queue management
+│   │   │   │   ├── processing.py # Processing control
+│   │   │   │   └── logging.py   # Frontend logging
+│   │   │   ├── state.py      # Global state management
 │   │   │   └── dependencies.py # API dependencies
 │   │   ├── core/             # Core functionality
 │   │   │   ├── config.py     # Configuration settings
@@ -118,20 +149,20 @@ llm-image-tagger/
 │   │   │   └── schemas.py    # Pydantic models
 │   │   ├── services/         # Business logic
 │   │   │   ├── image_processor.py # Image processing service
-│   │   │   └── vector_store.py    # Vector database service
+│   │   │   ├── vector_store.py    # Vector database service
+│   │   │   ├── processing_queue.py # Queue management
+│   │   │   └── queue_persistence.py # Queue state persistence
 │   │   └── utils/            # Utility functions
 │   │       └── helpers.py    # Utility functions
 │   ├── tests/                # Test files
 │   ├── main.py              # Application entry point
-│   ├── requirements.txt     # Python dependencies
 │   └── .env                 # Environment variables
 ├── data/                    # Application data directory
 │   └── queue_state.json     # Queue persistence data
 ├── static/                  # Frontend static files
 │   └── index.html          # Main HTML file
 ├── run.py                  # Script to run the application
-├── run_with_venv.sh        # Shell script to run with virtual environment (Unix/macOS)
-├── run_with_venv.ps1       # PowerShell script to run with virtual environment (Windows)
+├── requirements.txt        # Python dependencies
 └── README.md              # Project documentation
 ```
 
@@ -141,7 +172,7 @@ llm-image-tagger/
 
     ```bash
     git clone https://github.com/CaliLuke/llm-image-tagger
-    cd llm-vision-tagger
+    cd llm-image-tagger
     ```
 
 2. **Set up a virtual environment and install dependencies:**
@@ -151,11 +182,6 @@ llm-image-tagger/
     source venv/bin/activate  # On Unix/macOS
     # or
     venv\Scripts\activate  # On Windows
-    ```
-
-    Note: The `requirements.txt` file should ONLY exist in the root directory, not in backend/. All dependencies should be listed in the root requirements.txt file.
-
-    ```bash
     pip install -r requirements.txt
     ```
 
@@ -163,14 +189,12 @@ llm-image-tagger/
     - Copy the `.env.example` file in the backend directory to `.env`
     - Modify the values as needed
 
-4. **Pull and Start the Ollama model:**
-
-    Download the installer from [here](https://github.com/ollama/ollama) and install Ollama.
-
-    Pull the Llama 3.2 Vision model:
+4. **Install Ollama and pull the model:**
+    - Download and install Ollama from [ollama.com](https://ollama.com/)
+    - Pull the Llama 3.2 Vision model:
 
     ```bash
-    ollama pull llama3.2-vision # For 11B model
+    ollama pull llama3.2-vision
     ```
 
 ## Usage
@@ -187,13 +211,16 @@ llm-image-tagger/
 
     ```bash
     python run.py  # Run with default settings
-    python run.py --debug  # Run in debug mode
+    python run.py --debug  # Run in debug mode with auto-reload
     ```
 
     Options:
+
     ```bash
     python run.py --host=0.0.0.0 --port=8080  # Specify host and port
     python run.py --no-browser  # Run without opening browser
+    python run.py --skip-tests  # Skip running tests in debug mode
+    python run.py --force  # Force start even if port is in use
     ```
 
 3. **Select a folder:**
@@ -217,16 +244,43 @@ llm-image-tagger/
 
 ## API Endpoints
 
-- `GET /`: Serves the main web interface
-- `POST /images`: Scans a folder for images and returns metadata
-- `GET /image/{path}`: Retrieves a specific image file
-- `POST /search`: Performs hybrid search on images
-- `POST /refresh`: Rescans the current folder
-- `POST /process-image`: Processes a single image
-- `POST /update-metadata`: Updates image metadata
-- `GET /check-init-status`: Checks vector database initialization
-- `POST /stop-processing`: Stops the current batch processing operation
-- `POST /reset-processing-state`: Resets the processing state after stopping
+### Search Endpoints
+
+- `POST /search`: Performs hybrid search combining vector similarity and full-text search
+  - Searches through descriptions, tags, and extracted text
+  - Returns ranked results based on relevance
+  - Supports natural language queries
+
+### Queue Management
+
+- `GET /queue/status`: Returns current queue status (size, active/completed/failed tasks)
+- `GET /queue/tasks`: Lists all tasks in the queue with their status
+- `POST /queue/clear`: Clears all tasks from the queue and task history
+
+### Image Processing
+
+- `POST /processing/start`: Starts batch image processing
+  - Processes images in queue
+  - Provides real-time progress updates
+  - Supports background processing
+- `POST /processing/stop`: Stops current processing operation
+- `GET /processing/status`: Returns current processing status and progress
+
+### Frontend Logging
+
+- `POST /logging/error`: Logs frontend errors with stack traces
+- `POST /logging/info`: Logs frontend information messages
+- `POST /logging/debug`: Logs frontend debug information
+
+Each endpoint includes:
+
+- Comprehensive error handling
+- Detailed logging
+- Progress tracking where applicable
+- Type validation
+- Authentication (if configured)
+
+For detailed API documentation, visit `/docs` when the server is running.
 
 ## Development
 
@@ -289,55 +343,10 @@ pytest tests/test_api.py::test_stop_processing
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
+## For AI Assistants
+
+If you are an AI assistant helping with this project, please read [AI_ASSISTANT_GUIDE.md](AI_ASSISTANT_GUIDE.md) before proceeding.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-
-## FOR AI ASSISTANTS - READ THIS FIRST
-
-When helping users run this app:
-
-DO:
-1. CHECK if virtual environment exists first:
-   ```bash
-   # Check if venv directory exists
-   ls venv/
-   
-   # If it doesn't exist, create it:
-   python -m venv venv
-   pip install -r requirements.txt
-   ```
-
-2. JUST run these two commands in order:
-   ```bash
-   source venv/bin/activate
-   python run.py --debug
-   ```
-
-3. Wait for the app to start - normal startup includes:
-   - Ollama loading the model (takes a few seconds)
-   - Metal/GPU initialization messages
-   - Model loading messages
-
-4. Make SMALL, FOCUSED changes and test frequently:
-   - Fix one issue at a time
-   - Run tests after each change
-   - Verify the change fixed the intended issue
-   - Don't modify multiple files or systems at once
-   
-DO NOT:
-1. Try to modify run.py - it works fine
-2. Panic when seeing normal Ollama startup logs
-3. Try to "fix" working code before running the app
-4. Overcomplicate the simple two-step process
-5. Ignore these instructions and try to be "clever"
-6. Suggest infrastructure changes when seeing standard model loading messages
-7. Start adding logging or debugging code when tests fail during startup - this is normal, let the process complete first
-
-HANDLING TEST FAILURES:
-1. Let ALL tests complete first - don't interrupt on first failure
-2. If tests fail but the app starts anyway, that's fine - deal with test fixes later
-3. Only investigate test failures if the app doesn't start
-4. DO NOT start adding logging or modifying test files until explicitly asked
-
-Remember: Just check for venv, then run the two commands. That's it. The app works.
