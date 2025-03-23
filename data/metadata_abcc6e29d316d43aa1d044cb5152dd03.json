@@ -1,0 +1,139 @@
+{
+    "IMG_1526.jpg": {
+        "description": "The image shows a man drinking from a mug with a cartoon character on it, likely taken as part of a social media post.",
+        "tags": [
+            "man",
+            "coffee mug",
+            "Rick Sanchez",
+            "Rick and Morty",
+            "meme",
+            "gif",
+            "image macro",
+            "humor",
+            "pop culture"
+        ],
+        "text_content": "I turned myself into a mug, morty.",
+        "is_processed": true
+    },
+    "IMG_20171115_222410.jpg": {
+        "description": "A man and a toddler are lying on a bed, with the man wearing glasses and holding the child close to his face as they both gaze into each other's eyes.",
+        "tags": [
+            "man",
+            "baby",
+            "bedroom",
+            "nighttime",
+            "sleeping",
+            "bed",
+            "pajamas",
+            "dad",
+            "son",
+            "father",
+            "child",
+            "parent"
+        ],
+        "text_content": "",
+        "is_processed": true
+    },
+    "Levels whiteboard.png": {
+        "description": "This photograph depicts a whiteboard displaying a comprehensive flowchart, comprising handwritten notes and sketches that illustrate various concepts related to computer science, data analytics, and marketing. The chart is divided into multiple sections, each addressing specific topics such as data processing, campaign management, and advertisement targeting.",
+        "tags": [
+            "whiteboard",
+            "handwritten",
+            "black ink",
+            "flowchart",
+            "organization",
+            "diagram",
+            "workplace"
+        ],
+        "text_content": "whiteboard with hand-drawn notes",
+        "is_processed": true
+    },
+    "StarfieldAmericanClassic.jpg": {
+        "description": "The image depicts the back and front of a blue electric guitar, showcasing its unique design and features.",
+        "tags": [
+            "electric guitar",
+            "blue",
+            "guitar",
+            "wall-mounted",
+            "musician",
+            "artistic style"
+        ],
+        "text_content": "",
+        "is_processed": true
+    },
+    "IMG_20190319_172144.jpg": {
+        "description": "A selfie-style photo of a man wearing The North Face vest, standing on a city sidewalk.",
+        "tags": [
+            "man with glasses",
+            "beard",
+            "the north face logo",
+            "black and green puffer vest"
+        ],
+        "text_content": "SIX LEVELS",
+        "is_processed": true
+    },
+    "IMG_20170603_103330.jpg": {
+        "description": "The image shows a selfie of a man wearing a Juventus jersey, taken outdoors on a sunny day.",
+        "tags": [
+            "selfie",
+            "outdoors",
+            "green grass",
+            "tree",
+            "black and white soccer jersey",
+            "yellow accents"
+        ],
+        "text_content": "JUVENTUS",
+        "is_processed": true
+    },
+    "IMG_0816.jpg": {
+        "description": "The image shows a child's bike parked next to another bike, with various items on the shelf behind it.",
+        "tags": [
+            "bicycle",
+            "blue",
+            "black"
+        ],
+        "text_content": "",
+        "is_processed": true
+    },
+    "IMG_20171124_113111.jpg": {
+        "description": "The image captures a heartwarming moment between an adult and a young child, likely a father-son duo, within the confines of a large vehicle.",
+        "tags": [
+            "boy",
+            "child",
+            "man",
+            "toy",
+            "car",
+            "ride-on toy",
+            "playground equipment",
+            "indoor play area"
+        ],
+        "text_content": "The man with a beard and glasses is smiling at a child who is sitting in what appears to be some kind of vehicle, possibly a bus or train.",
+        "is_processed": true
+    },
+    "IMG_20171227_094057_413.jpg": {
+        "description": "A man with a beard and glasses sits next to a young child, both looking at something off-camera.",
+        "tags": [
+            "man",
+            "kid",
+            "black shirt",
+            "blue top",
+            "beard",
+            "glasses",
+            "hand on head",
+            "indoor setting"
+        ],
+        "text_content": "",
+        "is_processed": true
+    },
+    "IMG_20190120_203915.jpg": {
+        "description": "A man with a beard and short hair wearing black-framed glasses, a black T-shirt, and a guitar strap bearing the name 'Ernie Ball,' holds an electric bass guitar against his chest while taking a selfie.",
+        "tags": [
+            "bearded",
+            "strumming",
+            "guitar",
+            "black t-shirt"
+        ],
+        "text_content": "Ernie Ball",
+        "is_processed": true
+    }
+}

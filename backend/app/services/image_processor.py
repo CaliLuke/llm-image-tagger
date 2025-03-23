@@ -23,6 +23,9 @@ import base64
 from PIL import Image
 import io
 import jsonschema
+import os
+from ..core.logging import logger
+from .storage import file_storage
 
 # Configure logger with module name
 logger = logging.getLogger(__name__)
@@ -68,12 +71,12 @@ class ImageProcessor:
         stop_check (Optional[callable]): Callback to check if processing should stop
     """
     
-    def __init__(self, model_name: str = 'llama3.2-vision', stop_check: Optional[callable] = None):
+    def __init__(self, model_name: str = 'gemma3:4b', stop_check: Optional[callable] = None):
         """
         Initialize the ImageProcessor.
         
         Args:
-            model_name (str): Name of the Ollama vision model to use (default: llama3.2-vision)
+            model_name (str): Name of the Ollama model to use (default: gemma3:4b)
             stop_check (Optional[callable]): Optional callback to check if processing should be stopped
         """
         self.model_name = model_name
@@ -185,6 +188,10 @@ class ImageProcessor:
                     overall_progress = step_start + (step_progress * step_size)
                     logger.debug(f"Description progress: {overall_progress:.2%}")
                     yield {"progress": overall_progress}
+            
+            if description is None:
+                raise ValueError("Failed to get image description")
+            
             current_step += 1
             
             # Get tags
@@ -202,6 +209,10 @@ class ImageProcessor:
                     overall_progress = step_start + (step_progress * step_size)
                     logger.debug(f"Tags progress: {overall_progress:.2%}")
                     yield {"progress": overall_progress}
+            
+            if tags is None:
+                raise ValueError("Failed to get image tags")
+            
             current_step += 1
             
             # Get text content
@@ -222,7 +233,9 @@ class ImageProcessor:
                     overall_progress = step_start + (step_progress * step_size)
                     logger.debug(f"Text content progress: {overall_progress:.2%}")
                     yield {"progress": overall_progress}
-            current_step += 1
+            
+            if text is None:
+                raise ValueError("Failed to get image text content")
 
             metadata = {
                 "description": description.description,
@@ -429,7 +442,7 @@ class ImageProcessor:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             raise
 
-def update_image_metadata(folder_path: Path, image_path: str, metadata: Dict[str, Any]) -> None:
+async def update_image_metadata(folder_path: Path, image_path: str, metadata: Dict[str, Any]) -> None:
     """
     Update the metadata file with new image processing results.
     
@@ -444,30 +457,29 @@ def update_image_metadata(folder_path: Path, image_path: str, metadata: Dict[str
         metadata (Dict[str, Any]): New metadata to store for the image
         
     Raises:
-        Exception: If there's an error reading or writing the metadata file
+        PermissionError: If metadata file cannot be read/written due to permissions
+        StorageError: If there are other storage-related errors
     """
     metadata_file = folder_path / "image_metadata.json"
+    logger.info(f"Updating metadata for image: {image_path}")
     
     try:
-        if metadata_file.exists():
-            with open(metadata_file, 'r') as f:
-                all_metadata = json.load(f)
+        # Load existing metadata if available
+        all_metadata = {}
+        if await file_storage.exists(metadata_file):
+            all_metadata = await file_storage.read(metadata_file)
             logger.debug(f"Loaded existing metadata for {len(all_metadata)} images")
-        else:
-            all_metadata = {}
-            logger.debug("No existing metadata file found, creating new one")
-
+        
         # Update the metadata for this image
         all_metadata[image_path] = metadata
         logger.debug(f"Updated metadata for image: {image_path}")
-
+        
         # Save the updated metadata
-        with open(metadata_file, 'w') as f:
-            json.dump(all_metadata, f, indent=4)
+        await file_storage.write(metadata_file, all_metadata)
         logger.info(f"Saved metadata for {len(all_metadata)} images")
-
+        
     except Exception as e:
-        logger.error(f"Error updating metadata file: {str(e)}")
+        logger.error(f"Error updating metadata: {str(e)}")
         logger.error(f"Error type: {type(e)}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise

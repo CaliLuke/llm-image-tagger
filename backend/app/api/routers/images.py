@@ -170,38 +170,35 @@ async def update_metadata(
             raise HTTPException(status_code=404, detail="Image not found")
             
         # Load current metadata
-        metadata = load_or_create_metadata(Path(current_folder))
+        metadata = await load_or_create_metadata(Path(current_folder))
         
-        # Update metadata
-        if request.path in metadata:
-            if request.description is not None:
-                metadata[request.path]["description"] = request.description
-            if request.tags is not None:
-                metadata[request.path]["tags"] = request.tags
-            if request.text_content is not None:
-                metadata[request.path]["text_content"] = request.text_content
-                
-            # Update vector store
-            vector_store.add_or_update_image(
-                request.path,
-                metadata[request.path]
-            )
-            
-            logger.info(f"Updated metadata for {request.path}")
-            return {"message": "Metadata updated successfully"}
-        else:
+        # Update metadata fields
+        if request.path not in metadata:
             logger.error(f"Image not found in metadata: {request.path}")
-            raise HTTPException(
-                status_code=404,
-                detail="Image not found in metadata"
-            )
+            raise HTTPException(status_code=404, detail="Image not found in metadata")
             
-    except HTTPException:
+        if request.description is not None:
+            metadata[request.path]["description"] = request.description
+        if request.tags is not None:
+            metadata[request.path]["tags"] = request.tags
+        if request.text_content is not None:
+            metadata[request.path]["text_content"] = request.text_content
+            
+        metadata[request.path]["is_processed"] = True
+        
+        # Save metadata
+        metadata_file = Path(current_folder) / "image_metadata.json"
+        await file_storage.write(metadata_file, metadata)
+        
+        # Update vector store
+        await vector_store.add_or_update_image(request.path, metadata[request.path])
+        
+        return {"message": "Metadata updated successfully"}
+        
+    except HTTPException as e:
         raise
     except Exception as e:
-        logger.error(f"Error updating metadata for {request.path}: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error updating metadata: {str(e)}"
-        ) 
+        logger.error(f"Error updating metadata: {str(e)}")
+        logger.error(f"Exception type: {type(e)}")
+        logger.error(f"Exception traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e)) 

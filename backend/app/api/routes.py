@@ -8,6 +8,7 @@ import traceback
 from PIL import Image
 import hashlib
 import asyncio
+import random
 
 from ..core.logging import logger
 from ..models.schemas import (
@@ -25,6 +26,7 @@ from ..services.vector_store import VectorStore
 from ..services.processing_queue import ProcessingQueue
 from ..services.queue_processor import QueueProcessor
 from ..services.queue_persistence import QueuePersistence
+from ..services.storage import file_storage
 from ..utils.helpers import (
     load_or_create_metadata, 
     create_image_info
@@ -50,9 +52,45 @@ data_dir = project_root / "data"
 
 def get_vector_store() -> VectorStore:
     """Get or create a VectorStore instance."""
-    if not hasattr(router, "vector_store"):
+    try:
+        if not router.vector_store:
+            # Initialize vector store in the data directory
+            vector_store_path = data_dir / "vectordb"
+            if not vector_store_path.exists():
+                vector_store_path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created vector store directory at {vector_store_path}")
+            
+            # Create a new vector store
+            logger.info("Initializing vector store...")
+            router.vector_store = VectorStore(persist_directory=str(vector_store_path))
+            
+            # Verify initialization
+            if not router.vector_store:
+                raise RuntimeError("Vector store initialization failed")
+            
+            # Test the collection with a simple operation
+            test_id = "__test_init__"
+            try:
+                router.vector_store.collection.add(
+                    ids=[test_id],
+                    documents=["test document"],
+                    metadatas=[{"test": "true"}]
+                )
+                router.vector_store.collection.delete(ids=[test_id])
+                logger.info("Successfully verified vector store initialization")
+            except Exception as e:
+                logger.error(f"Vector store verification failed: {str(e)}")
+                router.vector_store = None
+                raise RuntimeError(f"Vector store verification failed: {str(e)}")
+            
+        return router.vector_store
+    except Exception as e:
+        logger.error(f"Error in get_vector_store: {str(e)}")
         router.vector_store = None
-    return router.vector_store
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to initialize vector store: {str(e)}"
+        )
 
 def get_image_processor() -> ImageProcessor:
     """Get or create an ImageProcessor instance."""
@@ -137,74 +175,72 @@ async def read_root():
     return FileResponse("static/index.html")
 
 @router.post("/images", response_model=ImagesResponse)
-async def get_images(request: FolderRequest):
+async def open_folder(folder: FolderRequest):
     """
-    Get images from a folder.
+    Open a folder and load its images.
+    
+    This endpoint:
+    1. Validates the provided folder path
+    2. Sets the current folder in application state
+    3. Initializes the vector store
+    4. Loads or creates metadata from the folder
+    5. Synchronizes the vector store with the metadata (async)
+    6. Creates ImageInfo objects for all images
     
     Args:
-        request: FolderRequest object
+        folder: Folder request with path
         
     Returns:
-        ImagesResponse object
+        ImagesResponse with list of images
         
     Raises:
-        HTTPException: If the folder does not exist or there is an error processing the folder
+        HTTPException: If folder not found or other errors occur
     """
     try:
-        # Convert to absolute path and resolve any symlinks
-        folder_path = Path(request.folder_path).resolve()
-        logger.info(f"Received request to open folder: {folder_path}")
-        
-        if not folder_path.exists() or not folder_path.is_dir():
+        folder_path = Path(folder.folder_path)
+        if not folder_path.exists():
             logger.error(f"Folder not found: {folder_path}")
             raise HTTPException(status_code=404, detail="Folder not found")
         
-        # Store the absolute path
-        router.current_folder = str(folder_path)
-        logger.info(f"Set current_folder to: {router.current_folder}")
+        logger.info(f"API: Received request to open folder: {folder_path}")
+        router.current_folder = str(folder_path.resolve())
+        logger.info(f"STATE: Current folder set to: {router.current_folder}")
         
-        # Initialize vector store in the data directory
-        vector_store_path = data_dir / "vectordb"
-        logger.info(f"Using vector store path: {vector_store_path}")
+        # Initialize vector store
+        logger.info(f"VECTOR_STORE: Initializing for folder: {folder_path}")
+        vector_store = get_vector_store()
         
-        # Create vector store directory if it doesn't exist
-        if not vector_store_path.exists():
-            vector_store_path.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created vector store directory at {vector_store_path}")
+        # Load metadata from folder
+        logger.info(f"METADATA: Loading from folder: {folder_path}")
+        metadata = await load_or_create_metadata(folder_path)
+        logger.info(f"METADATA: Loaded {len(metadata)} entries from {folder_path}")
         
-        # Create a new vector store
-        logger.info("Initializing vector store...")
-        router.vector_store = VectorStore(persist_directory=str(vector_store_path))
-        logger.info("Vector store initialized successfully")
+        # Log the processed images count
+        processed_count = sum(1 for img_data in metadata.values() if img_data.get('is_processed', False))
+        logger.info(f"METADATA: Found {processed_count}/{len(metadata)} processed images")
         
-        # Initialize queue persistence in the data directory
-        if not data_dir.exists():
-            data_dir.mkdir(parents=True, exist_ok=True)
-        router.queue_persistence = QueuePersistence(data_dir)
-        logger.info(f"Initialized queue persistence at {data_dir}")
+        # Sync the vector store with the metadata (async operation)
+        logger.info(f"VECTOR_STORE: Synchronizing with metadata ({len(metadata)} entries)")
+        await vector_store.sync_with_metadata(folder_path, metadata)
+        logger.info(f"VECTOR_STORE: Synchronization complete for folder: {folder_path}")
         
-        # Initialize processing queue with persistence
-        router.processing_queue = ProcessingQueue.load(router.queue_persistence)
-        logger.info("Initialized processing queue")
+        # Convert metadata to image info objects
+        logger.info("PROCESSING: Creating ImageInfo objects")
+        images = [create_image_info(rel_path, metadata) for rel_path in metadata.keys()]
         
-        metadata = load_or_create_metadata(folder_path)
-        images = [create_image_info(rel_path, metadata) 
-                  for rel_path in metadata.keys()]
-        logger.info(f"Successfully processed folder with {len(images)} images")
+        # Log the processed image count in the response
+        processed_images = sum(1 for img in images if img.is_processed)
+        logger.info(f"API: Returning {len(images)} images ({processed_images} processed) to client")
+        
+        # Verify consistency between metadata and ImageInfo objects 
+        if processed_count != processed_images:
+            logger.warning(f"CONSISTENCY: Mismatch between processed count in metadata ({processed_count}) and ImageInfo objects ({processed_images})")
+        
         return {"images": images}
-            
-    except HTTPException as e:
-        # Re-raise HTTP exceptions without wrapping
-        logger.error(f"HTTP error processing folder {request.folder_path}: {str(e)}")
-        raise
-            
     except Exception as e:
-        # Log unexpected errors and raise as 500
-        logger.error(f"Unexpected error processing folder {request.folder_path}: {str(e)}")
-        logger.error(f"Exception type: {type(e)}")
-        logger.error(f"Exception traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, 
-                          detail=f"Error processing folder: {str(e)}")
+        logger.error(f"ERROR: Failed to open folder: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/image/{path:path}")
 async def get_image(path: str):
@@ -290,7 +326,7 @@ async def search_endpoint(
     vector_store: VectorStore = Depends(get_vector_store)
 ):
     """
-    Search images using hybrid search (full-text + vector).
+    Search for images using metadata and vector search.
     
     Args:
         request: SearchRequest object
@@ -300,78 +336,95 @@ async def search_endpoint(
         SearchResponse object
         
     Raises:
-        HTTPException: If there is an error searching for images
+        HTTPException: If search fails
     """
     try:
+        # Get current folder
         current_folder = get_current_folder()
-        if not current_folder:
+        if current_folder is None:
             raise HTTPException(status_code=400, detail="No folder selected")
             
         folder_path = Path(current_folder)
+        if not folder_path.exists():
+            raise HTTPException(status_code=400, detail="Selected folder no longer exists")
         
         # Load current metadata
-        metadata_file = folder_path / "image_metadata.json"
-        if not metadata_file.exists():
-            raise HTTPException(status_code=400, detail="No metadata file found")
-            
-        with open(metadata_file, 'r') as f:
-            metadata = json.load(f)
+        metadata = await load_or_create_metadata(folder_path)
         
         # Use the instance-specific vector store
         matching_images = search_images(request.query, metadata, vector_store)
         
-        # Convert to ImageInfo objects
-        images = [ImageInfo(
-            name=img["name"],
-            path=img["path"],
-            url=f"/image/{img['path']}",  # Add the URL field
-            description=img.get("description", ""),
-            tags=img.get("tags", []),
-            text_content=img.get("text_content", ""),
-            is_processed=img.get("is_processed", False)
-        ) for img in matching_images]
-        
-        return {"images": images}
+        return SearchResponse(images=matching_images)
+    
     except HTTPException:
-        raise
+        # Re-raise HTTP exceptions without wrapping
+        raise    
     except Exception as e:
         logger.error(f"Error searching images: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error searching images: {str(e)}")
+        logger.error(f"Exception type: {type(e)}")
+        logger.error(f"Exception traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/refresh", response_model=ImagesResponse)
 async def refresh_images():
     """
     Refresh images in the current folder.
     
+    This endpoint:
+    1. Gets the current folder from application state
+    2. Reloads metadata from the folder
+    3. Synchronizes the vector store with the metadata (async)
+    4. Creates ImageInfo objects for all images
+    
     Returns:
-        ImagesResponse object
+        ImagesResponse with updated list of images
         
     Raises:
         HTTPException: If there is an error refreshing the images
     """
     try:
         folder_path = Path(get_current_folder())
+        logger.info(f"API: Refreshing images in folder: {folder_path}")
         
         # Reload metadata
-        metadata = load_or_create_metadata(folder_path)
+        logger.info(f"METADATA: Reloading from folder: {folder_path}")
+        metadata = await load_or_create_metadata(folder_path)
+        logger.info(f"METADATA: Reloaded {len(metadata)} entries from {folder_path}")
         
-        # Sync with vector store
+        # Log the processed images count
+        processed_count = sum(1 for img_data in metadata.values() if img_data.get('is_processed', False))
+        logger.info(f"METADATA: Found {processed_count}/{len(metadata)} processed images")
+        
+        # Sync with vector store (async operation)
+        logger.info(f"VECTOR_STORE: Synchronizing with metadata ({len(metadata)} entries)")
         vector_store = get_vector_store()
-        vector_store.sync_with_metadata(folder_path, metadata)
+        await vector_store.sync_with_metadata(folder_path, metadata)
+        logger.info(f"VECTOR_STORE: Synchronization complete for folder: {folder_path}")
         
         # Convert to ImageInfo objects
+        logger.info("PROCESSING: Creating ImageInfo objects")
         images = [create_image_info(rel_path, metadata) 
                   for rel_path in metadata.keys()]
         
+        # Log the processed image count in the response
+        processed_images = sum(1 for img in images if img.is_processed)
+        logger.info(f"API: Returning {len(images)} images ({processed_images} processed) to client")
+        
+        # Verify consistency between metadata and ImageInfo objects
+        if processed_count != processed_images:
+            logger.warning(f"CONSISTENCY: Mismatch between processed count in metadata ({processed_count}) and ImageInfo objects ({processed_images})")
+        
         return {"images": images}
     except Exception as e:
-        logger.error(f"Error refreshing images: {str(e)}")
+        logger.error(f"ERROR: Failed to refresh images: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error refreshing images: {str(e)}")
 
 @router.post("/process-image", response_model=None)
 async def process_image(
     request: Request,
     image_processor: ImageProcessor = Depends(get_image_processor),
+    vector_store: VectorStore = Depends(get_vector_store),
     use_queue: bool = False
 ) -> Union[StreamingResponse, JSONResponse]:
     """Process a single image and return its metadata."""
@@ -411,28 +464,27 @@ async def process_image(
                         rel_path = str(image_path.relative_to(Path(get_current_folder())))
                         
                         # Load current metadata
-                        metadata = load_or_create_metadata(Path(get_current_folder()))
+                        metadata = await load_or_create_metadata(Path(get_current_folder()))
                         
                         # Update metadata for this image
                         metadata[rel_path] = update["image"]
                         
-                        # Save updated metadata to file
-                        project_root = Path(__file__).parent.parent.parent.parent
-                        data_dir = project_root / "data"
-                        data_dir.mkdir(exist_ok=True)
-                        folder_hash = hashlib.md5(str(get_current_folder()).encode()).hexdigest()
-                        metadata_file = data_dir / f"metadata_{folder_hash}.json"
+                        # Save updated metadata to image folder
+                        metadata_file = Path(get_current_folder()) / "image_metadata.json"
+                        await file_storage.write(metadata_file, metadata)
                         
-                        with open(metadata_file, 'w') as f:
-                            json.dump(metadata, f, indent=4)
-                        
-                        # Update the vector store
-                        await router.vector_store.add_or_update_image(rel_path, update["image"])
-                        
+                        # Update vector store
+                        await vector_store.add_or_update_image(rel_path, update["image"])
+                    
                     yield json.dumps(update) + "\n"
-                
+            
+            except HTTPException:
+                # Re-raise HTTP exceptions without wrapping
+                raise
             except Exception as e:
                 logger.error(f"Error processing image: {str(e)}")
+                logger.error(f"Error type: {type(e)}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
                 yield json.dumps({"success": False, "message": str(e)}) + "\n"
         
         return StreamingResponse(
@@ -565,62 +617,45 @@ async def update_metadata(
         folder_path = Path(get_current_folder())
         logger.info(f"Current folder path: {folder_path}")
         
-        # Get the project root directory (3 levels up from routes.py)
-        project_root = Path(__file__).parent.parent.parent.parent
-        data_dir = project_root / "data"
-        data_dir.mkdir(exist_ok=True)
-        logger.info(f"Data directory: {data_dir}")
-        
-        # Create a unique filename based on the folder path
-        folder_hash = hashlib.md5(str(folder_path).encode()).hexdigest()
-        metadata_file = data_dir / f"metadata_{folder_hash}.json"
-        logger.info(f"Metadata file path: {metadata_file}")
-        
-        if not metadata_file.exists():
-            logger.error(f"Metadata file not found: {metadata_file}")
-            raise HTTPException(status_code=400, detail="No metadata file found")
-            
-        logger.info("Loading existing metadata")
-        with open(metadata_file, 'r') as f:
-            all_metadata = json.load(f)
-        logger.info(f"Loaded metadata with {len(all_metadata)} entries")
+        # Load current metadata from image folder
+        metadata = await load_or_create_metadata(folder_path)
+        logger.info(f"Loaded metadata with {len(metadata)} entries")
         
         # Check if image exists in metadata
-        if request.path not in all_metadata:
+        if request.path not in metadata:
             logger.error(f"Image not found in metadata: {request.path}")
-            logger.error(f"Available paths: {list(all_metadata.keys())}")
+            logger.error(f"Available paths: {list(metadata.keys())}")
             raise HTTPException(status_code=404, detail="Image not found in metadata")
         
         logger.info("Updating metadata fields")
         # Update metadata
         if request.description is not None:
-            all_metadata[request.path]["description"] = request.description
+            metadata[request.path]["description"] = request.description
             logger.info(f"Updated description: {request.description}")
         if request.tags is not None:
-            all_metadata[request.path]["tags"] = request.tags
+            metadata[request.path]["tags"] = request.tags
             logger.info(f"Updated tags: {request.tags}")
         if request.text_content is not None:
-            all_metadata[request.path]["text_content"] = request.text_content
+            metadata[request.path]["text_content"] = request.text_content
             logger.info(f"Updated text content: {request.text_content}")
         
         # Mark as processed
-        all_metadata[request.path]["is_processed"] = True
+        metadata[request.path]["is_processed"] = True
         logger.info("Marked image as processed")
         
-        # Save updated metadata
-        logger.info("Saving updated metadata to file")
-        with open(metadata_file, 'w') as f:
-            json.dump(all_metadata, f, indent=4)
+        # Save updated metadata to image folder
+        metadata_file = folder_path / "image_metadata.json"
+        await file_storage.write(metadata_file, metadata)
         logger.info("Successfully saved metadata to file")
         
         # Update vector store
         logger.info("Updating vector store")
-        await vector_store.add_or_update_image(request.path, all_metadata[request.path])
+        await vector_store.add_or_update_image(request.path, metadata[request.path])
         logger.info("Successfully updated vector store")
         
         # Create ImageInfo object
         logger.info("Creating ImageInfo object")
-        image_info = create_image_info(request.path, all_metadata)
+        image_info = create_image_info(request.path, metadata)
         logger.info("Successfully created ImageInfo object")
         
         return {
@@ -848,3 +883,93 @@ async def process_queue(background_tasks: BackgroundTasks):
     result = await processor.process_queue(background_tasks)
     
     return result
+
+@router.post("/test-process-batch")
+async def test_process_batch(
+    sample_size: int = 5,
+    vector_store: VectorStore = Depends(get_vector_store)
+) -> Dict:
+    """
+    Test endpoint to automatically process a batch of images.
+    
+    Args:
+        sample_size: Number of images to process (default: 5)
+        vector_store: VectorStore instance
+        
+    Returns:
+        Dict containing test results
+    """
+    try:
+        if not router.current_folder:
+            raise HTTPException(status_code=400, detail="No folder selected")
+            
+        folder_path = Path(get_current_folder())
+        logger.info(f"Starting batch processing test in folder: {folder_path}")
+        
+        # Get list of all images
+        image_files = []
+        for ext in settings.SUPPORTED_EXTENSIONS:
+            image_files.extend(folder_path.glob(f"*{ext}"))
+            image_files.extend(folder_path.glob(f"*{ext.upper()}"))
+        
+        if not image_files:
+            raise HTTPException(status_code=404, detail="No images found in folder")
+            
+        # Take a random sample
+        test_images = random.sample(image_files, min(sample_size, len(image_files)))
+        logger.info(f"Selected {len(test_images)} images for testing")
+        
+        results = {
+            "total_images": len(test_images),
+            "successful": 0,
+            "failed": 0,
+            "errors": [],
+            "processed": []
+        }
+        
+        # Process each image
+        image_processor = get_image_processor()
+        for img_path in test_images:
+            try:
+                logger.info(f"Processing test image: {img_path}")
+                rel_path = img_path.relative_to(folder_path)
+                
+                # Process the image
+                async for update in image_processor.process_image(img_path):
+                    if "image" in update:
+                        # Update metadata and vector store
+                        metadata = await load_or_create_metadata(folder_path)
+                        metadata[str(rel_path)] = update["image"]
+                        
+                        # Save metadata to image folder
+                        metadata_file = folder_path / "image_metadata.json"
+                        await file_storage.write(metadata_file, metadata)
+                            
+                        # Update vector store
+                        await vector_store.add_or_update_image(str(rel_path), update["image"])
+                        
+                        results["successful"] += 1
+                        results["processed"].append({
+                            "path": str(rel_path),
+                            "metadata": update["image"]
+                        })
+                        logger.info(f"Successfully processed: {rel_path}")
+                        
+            except Exception as e:
+                results["failed"] += 1
+                error_info = {
+                    "path": str(rel_path),
+                    "error": str(e),
+                    "type": type(e).__name__
+                }
+                results["errors"].append(error_info)
+                logger.error(f"Error processing {rel_path}: {str(e)}")
+                logger.error(traceback.format_exc())
+                
+        logger.info(f"Batch processing complete. Success: {results['successful']}, Failed: {results['failed']}")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error in batch processing test: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))

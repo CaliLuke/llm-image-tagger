@@ -76,6 +76,7 @@
                             type="text" 
                             placeholder="Enter folder path..." 
                             :disabled="isLoading"
+                            @keyup.enter="openFolder"
                             class="px-4 py-2 border border-gray-300 rounded-md w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                         >
                         <button @click="openFolder" 
@@ -220,18 +221,34 @@
                      :key="image.path"
                      @click="openImageModal(image)"
                      class="relative group cursor-pointer">
+                    <!-- Image container with status indicator via border color -->
                     <div class="aspect-square overflow-hidden rounded-lg bg-gray-100"
                          :class="{
-                             'ring-2 ring-green-500': image.is_processed,
-                             'ring-2 ring-orange-500': !image.is_processed
+                             'ring-2 ring-green-500': Boolean(image.is_processed),
+                             'ring-2 ring-orange-500': !Boolean(image.is_processed)
                          }">
                         <img :src="image.url" 
                              :alt="image.description"
                              class="w-full h-full object-cover group-hover:opacity-75 transition-opacity">
                     </div>
+                    <!-- Optional status indicator that can be enabled via app settings -->
+                    <div v-if="appSettings?.showProcessingStatus" 
+                         class="absolute top-0 right-0 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                        {{ image.is_processed ? '✓' : '✗' }}
+                    </div>
                 </div>
             </div>
-            
+
+            <!-- Image statistics summary - useful for both users and debugging -->
+            <div class="mt-4 text-xs text-gray-500 text-center">
+                <p>Showing {{ images.length }} images 
+                   <span v-if="appSettings?.showProcessingStatus">
+                   (Processed: {{ images.filter(img => img.is_processed).length }},
+                   Unprocessed: {{ images.filter(img => !img.is_processed).length }})
+                   </span>
+                </p>
+            </div>
+
             <!-- API Documentation Footer -->
             <div class="mt-8 text-center text-xs text-gray-500">
                 <p>API Documentation: 
@@ -391,14 +408,20 @@
                     // Auto-dismiss after duration (unless it's 0, which means don't auto-dismiss)
                     if (duration > 0) {
                         setTimeout(() => {
-                            dismissNotification(id);
+                            // Don't log button click for auto-dismiss
+                            const index = notifications.value.findIndex(n => n.id === id);
+                            if (index !== -1) {
+                                notifications.value.splice(index, 1);
+                            }
                         }, duration);
                     }
                     
                     return id;
                 };
                 
-                const dismissNotification = (id) => {
+                const dismissNotification = async (id) => {
+                    // Only log button click for manual dismissal
+                    await logButtonClick('Dismiss Notification', { id });
                     const index = notifications.value.findIndex(n => n.id === id);
                     if (index !== -1) {
                         notifications.value.splice(index, 1);
@@ -457,6 +480,7 @@
                         return;
                     }
 
+                    await logButtonClick('Open Folder', { path: folderPath.value });
                     isLoading.value = true;
                     loadingStatus.value = 'Opening folder...';
                     
@@ -502,6 +526,7 @@
                         return;
                     }
                     
+                    await logButtonClick('Search', { query: searchQuery.value.trim() });
                     isLoading.value = true;
                     loadingStatus.value = 'Searching...';
                     
@@ -531,6 +556,7 @@
                 }
 
                 const refreshImages = async () => {
+                    await logButtonClick('Refresh Images');
                     isLoading.value = true;
                     loadingStatus.value = 'Refreshing images...';
                     
@@ -556,6 +582,7 @@
                 }
 
                 const processImage = async (image) => {
+                    await logButtonClick('Process Single Image', { image: image.path });
                     image.processing = true;
                     image.progress = 0;  // Initialize progress
                     
@@ -932,6 +959,7 @@
 
                 // Queue-related functions
                 const refreshQueueStatus = async () => {
+                    await logButtonClick('Refresh Queue Status');
                     try {
                         const response = await fetch('/queue/status?detailed=true');
                         if (!response.ok) {
@@ -945,6 +973,7 @@
                 }
                 
                 const clearQueue = async () => {
+                    await logButtonClick('Clear Queue');
                     try {
                         const response = await fetch('/queue/clear', {
                             method: 'POST'
@@ -963,6 +992,7 @@
                 }
                 
                 const startQueueProcessing = async () => {
+                    await logButtonClick('Start Queue Processing');
                     try {
                         const response = await fetch('/queue/process', {
                             method: 'POST'
@@ -981,6 +1011,7 @@
                 }
                 
                 const stopQueueProcessing = async () => {
+                    await logButtonClick('Stop Queue Processing');
                     try {
                         const response = await fetch('/queue/stop', {
                             method: 'POST'
@@ -1058,7 +1089,8 @@
                     showError,
                     showWarning,
                     showSuccess,
-                    showInfo
+                    showInfo,
+                    queueStatus
                 }
             }
         }).mount('#app')

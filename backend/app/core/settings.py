@@ -66,9 +66,9 @@ class Settings(BaseSettings):
     
     # Ollama settings
     OLLAMA_MODEL: str = Field(
-        default="llama3.2-vision",
+        default="gemma3:4b",
         description="Ollama model name for image processing",
-        examples=["llama3.2-vision", "llama2-vision"]
+        examples=["gemma3:4b", "llama2-vision"]
     )
     OLLAMA_HOST: str = Field(
         default="http://localhost:11434",
@@ -113,7 +113,7 @@ class Settings(BaseSettings):
                 {
                     "API_HOST": "127.0.0.1",
                     "API_PORT": 8000,
-                    "OLLAMA_MODEL": "llama3.2-vision",
+                    "OLLAMA_MODEL": "gemma3:4b",
                     "OLLAMA_HOST": "http://localhost:11434",
                     "SUPPORTED_EXTENSIONS": [".png", ".jpg", ".jpeg", ".webp"],
                     "VECTOR_DB_DIR_NAME": "data/vectordb",

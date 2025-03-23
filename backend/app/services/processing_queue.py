@@ -280,24 +280,34 @@ class ProcessingQueue:
         Get the next task from the queue.
         
         This method:
-        1. Removes and returns the next task from the queue
-        2. Updates the current task reference
-        3. Triggers auto-save if enabled
-        4. Logs the task retrieval
+        1. Safely checks if queue has tasks
+        2. Removes and returns the next task from the queue
+        3. Updates the current task reference
+        4. Triggers auto-save if enabled
+        5. Logs the task retrieval
         
         Returns:
             Optional[ImageTask]: The next task if available, None if queue is empty
         """
-        if not self.queue:
-            logger.debug("Queue is empty, no next task available")
+        try:
+            if not self.queue:
+                logger.debug("Queue is empty, no next task available")
+                return None
+                
+            task = self.queue.pop(0)
+            self.current_task = task
+            logger.info(f"Retrieved next task: {task.image_path}")
+            logger.debug(f"Remaining queue length: {len(self.queue)}")
+            self._auto_save()
+            return task
+        except IndexError:
+            logger.warning("Attempted to get task from empty queue")
             return None
-            
-        task = self.queue.pop(0)
-        self.current_task = task
-        logger.info(f"Retrieved next task: {task.image_path}")
-        logger.debug(f"Remaining queue length: {len(self.queue)}")
-        self._auto_save()
-        return task
+        except Exception as e:
+            logger.error(f"Error getting next task: {str(e)}")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            return None
     
     def start_processing(self) -> None:
         """

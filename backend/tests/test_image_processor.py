@@ -94,7 +94,8 @@ def test_image_text_model():
     assert model.has_text == False
     assert model.text_content == ""
 
-def test_vector_store_add_entry(vector_store):
+@pytest.mark.asyncio
+async def test_vector_store_add_entry(vector_store):
     """Test adding an entry to the vector store."""
     logger.debug("Testing vector store add entry")
     try:
@@ -108,7 +109,7 @@ def test_vector_store_add_entry(vector_store):
         }
         
         # Add entry
-        vector_store.add_or_update_image(image_path, metadata)
+        await vector_store.add_or_update_image(image_path, metadata)
         logger.debug(f"Added entry for {image_path}")
         
         # Verify entry was added
@@ -122,7 +123,8 @@ def test_vector_store_add_entry(vector_store):
         logger.error(f"Error in test_vector_store_add_entry: {str(e)}", exc_info=True)
         raise
 
-def test_vector_store_update_entry(vector_store):
+@pytest.mark.asyncio
+async def test_vector_store_update_entry(vector_store):
     """Test updating an existing entry in the vector store."""
     logger.debug("Testing vector store update entry")
     try:
@@ -136,7 +138,7 @@ def test_vector_store_update_entry(vector_store):
         }
         
         # Add initial entry
-        vector_store.add_or_update_image(image_path, initial_metadata)
+        await vector_store.add_or_update_image(image_path, initial_metadata)
         logger.debug(f"Added initial entry for {image_path}")
         
         # Update metadata
@@ -146,7 +148,7 @@ def test_vector_store_update_entry(vector_store):
             "text_content": "Updated text",
             "is_processed": True
         }
-        vector_store.add_or_update_image(image_path, updated_metadata)
+        await vector_store.add_or_update_image(image_path, updated_metadata)
         logger.debug(f"Updated entry for {image_path}")
         
         # Verify update
@@ -158,7 +160,8 @@ def test_vector_store_update_entry(vector_store):
         logger.error(f"Error in test_vector_store_update_entry: {str(e)}", exc_info=True)
         raise
 
-def test_vector_store_search(vector_store):
+@pytest.mark.asyncio
+async def test_vector_store_search(vector_store):
     """Test searching entries in the vector store."""
     logger.debug("Testing vector store search")
     try:
@@ -170,7 +173,7 @@ def test_vector_store_search(vector_store):
         ]
         
         for path, metadata in entries:
-            vector_store.add_or_update_image(path, metadata)
+            await vector_store.add_or_update_image(path, metadata)
             logger.debug(f"Added entry for {path}")
         
         # Test search functionality
@@ -362,4 +365,143 @@ async def test_process_image_no_text(image_processor, tmp_path):
         logger.error(f"Error in test_process_image_no_text: {str(e)}")
         logger.error(f"Exception type: {type(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
+
+@pytest.mark.asyncio
+async def test_vector_store_sync_and_consistency(vector_store):
+    """Test vector store synchronization and state consistency.
+    
+    This test verifies:
+    1. Metadata synchronization between JSON and vector store
+    2. Consistency of stored data across operations
+    3. Proper cleanup of removed entries
+    4. Search functionality after sync
+    """
+    logger.debug("Testing vector store sync and consistency")
+    try:
+        # Initial metadata state
+        metadata = {
+            "image1.jpg": {
+                "description": "A sunny beach",
+                "tags": ["beach", "sunny", "vacation"],
+                "text_content": "Beach text",
+                "is_processed": True
+            },
+            "image2.jpg": {
+                "description": "A mountain peak",
+                "tags": ["mountain", "nature", "peak"],
+                "text_content": "Mountain text",
+                "is_processed": True
+            }
+        }
+        
+        # Test initial sync
+        logger.debug("Testing initial sync")
+        await vector_store.sync_with_metadata(Path("test_folder"), metadata)
+        
+        # Verify all entries were added
+        for image_path, expected_meta in metadata.items():
+            stored_meta = vector_store.get_metadata(image_path)
+            assert stored_meta is not None, f"Missing metadata for {image_path}"
+            assert stored_meta["description"] == expected_meta["description"]
+            assert stored_meta["tags"] == expected_meta["tags"]
+            assert stored_meta["text_content"] == expected_meta["text_content"]
+        
+        # Test search functionality after sync
+        beach_results = vector_store.search_images("beach sunny")
+        assert "image1.jpg" in beach_results
+        mountain_results = vector_store.search_images("mountain nature")
+        assert "image2.jpg" in mountain_results
+        
+        # Test metadata updates
+        logger.debug("Testing metadata updates")
+        metadata["image1.jpg"]["description"] = "A cloudy beach"
+        metadata["image1.jpg"]["tags"] = ["beach", "cloudy", "vacation"]
+        await vector_store.sync_with_metadata(Path("test_folder"), metadata)
+        
+        # Verify updates were applied
+        updated_meta = vector_store.get_metadata("image1.jpg")
+        assert updated_meta["description"] == "A cloudy beach"
+        assert "cloudy" in updated_meta["tags"]
+        
+        # Test deletion handling
+        logger.debug("Testing deletion handling")
+        del metadata["image2.jpg"]
+        await vector_store.sync_with_metadata(Path("test_folder"), metadata)
+        
+        # Verify deleted entry is removed
+        assert vector_store.get_metadata("image2.jpg") is None
+        mountain_results = vector_store.search_images("mountain")
+        assert "image2.jpg" not in mountain_results
+        
+        # Verify remaining entry is still intact
+        beach_meta = vector_store.get_metadata("image1.jpg")
+        assert beach_meta is not None
+        assert beach_meta["description"] == "A cloudy beach"
+        
+        logger.info("Vector store sync and consistency test completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in test_vector_store_sync_and_consistency: {str(e)}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise
+
+@pytest.mark.asyncio
+async def test_vector_store_error_handling(vector_store):
+    """Test vector store error handling.
+    
+    This test verifies:
+    1. Handling of invalid metadata
+    2. Handling of missing files
+    3. Handling of invalid search queries
+    4. Error logging
+    """
+    logger.debug("Testing vector store error handling")
+    try:
+        # Test handling of invalid metadata
+        logger.debug("Testing invalid metadata handling")
+        invalid_metadata = {
+            "description": "",  # Empty string instead of None
+            "tags": [],  # Empty list instead of string
+            "text_content": "",  # Empty string instead of int
+            "is_processed": False  # Boolean instead of string
+        }
+        
+        # Should handle minimal metadata gracefully
+        await vector_store.add_or_update_image("minimal.jpg", invalid_metadata)
+        stored_meta = vector_store.get_metadata("minimal.jpg")
+        assert stored_meta is not None
+        assert isinstance(stored_meta["description"], str)
+        assert isinstance(stored_meta["tags"], list)
+        assert isinstance(stored_meta["text_content"], str)
+        assert isinstance(stored_meta["is_processed"], bool)
+        
+        # Test handling of missing files
+        logger.debug("Testing missing file handling")
+        nonexistent_meta = vector_store.get_metadata("nonexistent.jpg")
+        assert nonexistent_meta is None
+        
+        # Test handling of invalid search queries
+        logger.debug("Testing invalid search query handling")
+        empty_query_results = vector_store.search_images("")
+        assert isinstance(empty_query_results, list)
+        assert len(empty_query_results) == 0
+        
+        # Test handling of very long queries
+        long_query = "a" * 1000
+        long_query_results = vector_store.search_images(long_query)
+        assert isinstance(long_query_results, list)
+        
+        # Test handling of special characters
+        special_chars_query = "!@#$%^&*()"
+        special_chars_results = vector_store.search_images(special_chars_query)
+        assert isinstance(special_chars_results, list)
+        
+        logger.info("Vector store error handling test completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in test_vector_store_error_handling: {str(e)}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise 

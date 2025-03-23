@@ -1,11 +1,7 @@
 import os
-import logging
 from pathlib import Path
 from typing import Union
-
-# Set up basic logging for debugging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+from .logging import logger
 
 class PathConfig:
     """Configuration for path handling and validation."""

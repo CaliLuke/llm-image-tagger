@@ -70,14 +70,70 @@ This guide outlines the development practices and procedures to follow when assi
    - Maintain consistent error handling patterns
    - Add docstrings to all new functions and classes
 
-3. LOGGING AND DOCUMENTATION:
+3. METADATA PERSISTENCE AND SYNCHRONIZATION:
+   - ALWAYS maintain consistency between storage layers:
+     ```python
+     # Storage layers that must be kept in sync:
+     {
+         "json_files": "<image_folder>/image_metadata.json",  # Persistent metadata
+         "vector_store": ".vectordb",                         # Search index
+         "memory_state": "router.current_folder",            # Runtime state
+     }
+     ```
+
+   - Synchronization checklist:
+     □ Load metadata from JSON when opening folder
+     □ Sync vector store with loaded metadata
+     □ Update both JSON and vector store when processing images
+     □ Verify all storage layers after updates
+     □ Handle reloading scenarios properly
+
+   - Common synchronization pitfalls:
+     - Not syncing vector store after loading metadata
+     - Not updating all storage layers consistently
+     - Not handling file deletion properly
+     - Not verifying metadata consistency after updates
+     - Not testing folder reload scenarios
+
+   - Best practices:
+     1. Store metadata in the image folder for portability
+     2. Use atomic file operations for metadata updates
+     3. Validate metadata before storing
+     4. Log all storage operations
+     5. Add synchronization tests
+     6. Handle edge cases (empty folders, invalid metadata)
+     7. Clean up stale data
+
+   - Example synchronization pattern:
+     ```python
+     async def update_metadata(folder_path: Path, image_path: str, metadata: Dict):
+         # 1. Update JSON storage in image folder
+         metadata_file = folder_path / "image_metadata.json"
+         with open(metadata_file, 'r') as f:
+             json_metadata = json.load(f)
+         json_metadata[image_path] = metadata
+         with open(metadata_file, 'w') as f:
+             json.dump(json_metadata, f, indent=4)
+         
+         # 2. Update vector store
+         await vector_store.add_or_update_image(image_path, metadata)
+         
+         # 3. Verify consistency
+         stored_metadata = vector_store.get_metadata(image_path)
+         assert stored_metadata == metadata
+     ```
+
+   Note: This is an interim solution. In the future, metadata will be stored directly 
+   in the image files themselves using standard formats like EXIF/XMP.
+
+4. LOGGING AND DOCUMENTATION:
    - Add logging statements at appropriate levels (debug/info/error)
    - Include context in log messages (e.g., file paths, operation details)
    - Document all API endpoints in both docstrings and README
    - Keep documentation in sync with code changes
    - Update type hints and schemas as needed
 
-4. TESTING AND VALIDATION:
+5. TESTING AND VALIDATION:
    - Make small, testable changes
    - Verify each change works before proceeding
    - Let tests complete before diagnosing issues
@@ -264,6 +320,58 @@ This guide outlines the development practices and procedures to follow when assi
              'verify_state': lambda: verify_all_storage(mock_state)
          }
      ```
+
+3. VECTOR STORE TESTING:
+   - ALWAYS verify both metadata and vector store consistency:
+
+     ```python
+     def test_vector_store_operations():
+         # 1. Verify metadata synchronization
+         await vector_store.sync_with_metadata(folder_path, metadata)
+         
+         # 2. Verify all entries were added correctly
+         for image_path, expected_meta in metadata.items():
+             stored_meta = vector_store.get_metadata(image_path)
+             assert stored_meta is not None
+             assert stored_meta == expected_meta
+         
+         # 3. Verify search functionality
+         results = vector_store.search_images(query)
+         assert expected_image in results
+         
+         # 4. Verify updates propagate correctly
+         await vector_store.add_or_update_image(image_path, new_metadata)
+         updated_meta = vector_store.get_metadata(image_path)
+         assert updated_meta == new_metadata
+         
+         # 5. Verify deletions are handled
+         vector_store.delete_image(image_path)
+         assert vector_store.get_metadata(image_path) is None
+     ```
+
+   - Common vector store testing pitfalls:
+     - Not verifying both metadata and search consistency
+     - Not testing deletion scenarios
+     - Not checking edge cases (empty metadata, invalid paths)
+     - Not verifying search relevance
+     - Not testing synchronization with JSON storage
+
+   - Vector store test checklist:
+     □ Test initialization and configuration
+     □ Test metadata CRUD operations
+     □ Test search functionality
+     □ Test synchronization with JSON storage
+     □ Test error handling
+     □ Test edge cases
+     □ Test concurrent operations if applicable
+
+   - Best practices:
+     1. Use temporary directories for test vector stores
+     2. Clean up after tests
+     3. Test both individual operations and bulk synchronization
+     4. Verify search relevance with carefully chosen test data
+     5. Include negative test cases
+     6. Test with realistic metadata structures
 
 ## Common Pitfalls to Avoid
 

@@ -23,15 +23,13 @@ The application provides an intuitive way to organize and search through your im
 6. Enable natural language search using both full-text and vector search
 7. Provide a modern web interface for browsing and managing images
 
-# Image tagger
-
 ## What the app does
 
-- On first open, it will prompt users to choose a folder.(Done)
-- It will scan the folder and subfolder for images (png/jpg/jpeg) and initialize an index record (if not initialized in this folder, we can probably use a JSON as initialization record? This can also be used for tracking new/deleted images.)(Done)
-- It will then create taggings of the images with Llama3.2 Vision with Ollama when "Start Tagging". It will create tags of elements/styles, a short description of the image, text within the images. The image path, tags, description, text within the images will be saved to a vector database for easier retrieval later.(Done)
-- Users can then query the images with natural language. During querying, it will use full-text search and vector search to find the most relevant images.(Done)
-- Users can browse the images on the UI, on click thumbnail, modal opens with image and its tags, description, and text within the image.(Done)
+- On first open, it will prompt users to choose a folder
+- It will scan the folder and subfolder for images (png/jpg/jpeg/webp) and initialize an index record (stored as image_metadata.json in the selected folder)
+- It will then create taggings of the images with Llama3.2 Vision with Ollama when "Start Tagging". It will create tags of elements/styles, a short description of the image, text within the images. The image path, tags, description, text within the images will be saved to a vector database for easier retrieval later
+- Users can then query the images with natural language. During querying, it will use full-text search and vector search to find the most relevant images
+- Users can browse the images on the UI, on click thumbnail, modal opens with image and its tags, description, and text within the image
 
 ## Project Structure Notes
 
@@ -76,6 +74,12 @@ The application provides an intuitive way to organize and search through your im
   - Real-time processing progress tracking
   - Stop/Resume batch processing capability
 
+- **External Volume Support**:
+  - Handles external drives and network shares
+  - Graceful handling of permission limitations
+  - Robust file operations with appropriate error messages
+  - Support for metadata read/write operations on various filesystem types
+
 ## Technical Architecture
 
 ### Frontend
@@ -95,7 +99,35 @@ The application provides an intuitive way to organize and search through your im
 - FastAPI server for robust API endpoints
 - Ollama integration for running Llama 3.2 Vision model
 - ChromaDB for vector storage and similarity search
+- File system storage service for robust file operations with retry mechanisms
 - Asynchronous image processing with stop/resume capability
+
+### Storage Service Details
+
+The application includes a dedicated storage service that:
+
+- Handles all file system interactions with robust error handling
+- Provides atomic file operations with retry mechanisms
+- Validates file permissions before operations
+- Handles JSON metadata serialization/deserialization
+- Ensures metadata consistency across operations
+- Creates parent directories as needed for file operations
+- Manages temporary files for atomic writes
+- Provides both synchronous and asynchronous interfaces
+- Implements proper cleanup for failed operations
+- Handles external volumes and their specific requirements
+
+This service isolates file system interactions from business logic, making the code more testable and robust against filesystem errors like permission issues or concurrent access problems.
+
+### Metadata Management
+
+The application stores metadata in two primary locations:
+
+1. **JSON File**: A `image_metadata.json` file is created in each image folder, containing all metadata for images in that folder. This allows metadata to stay with the images even when moved.
+
+2. **Vector Database**: Metadata is also stored in a ChromaDB instance for efficient semantic searching.
+
+The app ensures synchronization between these storage locations, with intelligent matching between filenames and paths to maintain metadata consistency.
 
 ### Image Processing Details
 
@@ -134,13 +166,7 @@ llm-image-tagger/
 ├── backend/                   # Backend code
 │   ├── app/                   # Application package
 │   │   ├── api/              # API endpoints
-│   │   │   ├── routers/      # API route modules
-│   │   │   │   ├── __init__.py  # Router initialization
-│   │   │   │   ├── search.py    # Search endpoints
-│   │   │   │   ├── queue.py     # Queue management
-│   │   │   │   ├── processing.py # Processing control
-│   │   │   │   └── logging.py   # Frontend logging
-│   │   │   ├── state.py      # Global state management
+│   │   │   ├── routes.py     # API route definitions
 │   │   │   └── dependencies.py # API dependencies
 │   │   ├── core/             # Core functionality
 │   │   │   ├── config.py     # Configuration settings
@@ -150,6 +176,7 @@ llm-image-tagger/
 │   │   ├── services/         # Business logic
 │   │   │   ├── image_processor.py # Image processing service
 │   │   │   ├── vector_store.py    # Vector database service
+│   │   │   ├── storage.py         # File system storage service
 │   │   │   ├── processing_queue.py # Queue management
 │   │   │   └── queue_persistence.py # Queue state persistence
 │   │   └── utils/            # Utility functions
@@ -224,7 +251,7 @@ llm-image-tagger/
     ```
 
 3. **Select a folder:**
-    - Enter the path to your image folder
+    - Enter the path to your image folder (including external drives like `/Volumes/...`)
     - Wait for initial scanning and processing
     - First-time processing may take longer due to model downloads
 
@@ -293,8 +320,10 @@ python run.py --debug
 This will:
 
 1. Run the test suite before starting the server
-2. Enable auto-reload for code changes
+2. Enable auto-reload for code changes (no manual restarts needed)
 3. Start the server at <http://127.0.0.1:8000>
+
+The application uses uvicorn's auto-reload feature, which automatically detects code changes and restarts the server, making development much faster. You'll see "WatchFiles detected changes" messages in the console when files are modified.
 
 Additional options:
 

@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 import logging
 import traceback
 import json
+import time
 
 # Configure logger with module name
 logger = logging.getLogger(__name__)
@@ -52,45 +53,100 @@ class VectorStore:
             persist_directory (str): Directory for storing ChromaDB data (default: ".vectordb")
             
         Raises:
-            Exception: If initialization fails
+            Exception: If initialization fails after retries
         """
         logger.info(f"Initializing VectorStore with persist directory: {persist_directory}")
-        try:
-            self.client = chromadb.PersistentClient(path=persist_directory, settings=Settings(anonymized_telemetry=False))
-            logger.debug("Created ChromaDB PersistentClient")
-            
-            # Use ChromaDB's default embedding function all-MiniLM-L6-v2
-            self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
-            logger.debug("Initialized default embedding function")
-            
-            # Get or create collection
-            self.collection = self.client.get_or_create_collection(
-                name="image_metadata",
-                embedding_function=self.embedding_function
-            )
-            logger.info("Successfully initialized VectorStore")
-        except Exception as e:
-            logger.error(f"Failed to initialize VectorStore: {str(e)}")
-            logger.error(f"Error type: {type(e)}")
-            logger.error(f"Full traceback: {traceback.format_exc()}")
-            raise
+        max_retries = 3
+        retry_count = 0
+        last_error = None
+        
+        while retry_count < max_retries:
+            try:
+                # Ensure the directory exists
+                Path(persist_directory).mkdir(parents=True, exist_ok=True)
+                
+                # Create ChromaDB client with explicit settings
+                self.client = chromadb.PersistentClient(
+                    path=persist_directory,
+                    settings=Settings(
+                        anonymized_telemetry=False,
+                        allow_reset=True,
+                        is_persistent=True
+                    )
+                )
+                logger.debug("Created ChromaDB PersistentClient")
+                
+                # Use ChromaDB's default embedding function all-MiniLM-L6-v2
+                self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
+                logger.debug("Initialized default embedding function")
+                
+                # Get or create collection with retries
+                collection_created = False
+                collection_retries = 3
+                
+                while not collection_created and collection_retries > 0:
+                    try:
+                        self.collection = self.client.get_or_create_collection(
+                            name="image_metadata",
+                            embedding_function=self.embedding_function
+                        )
+                        collection_created = True
+                        logger.debug("Successfully created/got collection")
+                    except Exception as ce:
+                        collection_retries -= 1
+                        if collection_retries == 0:
+                            raise ce
+                        logger.warning(f"Retrying collection creation. Attempts left: {collection_retries}")
+                
+                # Verify the collection is properly initialized
+                if not self.collection:
+                    raise RuntimeError("Collection initialization failed")
+                
+                # Test the collection with a simple operation
+                test_id = "__test_init__"
+                try:
+                    self.collection.add(
+                        ids=[test_id],
+                        documents=["test document"],
+                        metadatas=[{"test": "true"}]
+                    )
+                    self.collection.delete(ids=[test_id])
+                    logger.debug("Successfully tested collection operations")
+                except Exception as te:
+                    raise RuntimeError(f"Collection operation test failed: {str(te)}")
+                
+                logger.info("Successfully initialized VectorStore")
+                return
+                
+            except Exception as e:
+                last_error = e
+                retry_count += 1
+                logger.warning(f"Initialization attempt {retry_count} failed: {str(e)}")
+                if retry_count < max_retries:
+                    time.sleep(1)  # Wait before retrying
+        
+        # If we get here, all retries failed
+        error_msg = f"Failed to initialize VectorStore after {max_retries} attempts. Last error: {str(last_error)}"
+        logger.error(error_msg)
+        logger.error(f"Error type: {type(last_error)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise RuntimeError(error_msg)
 
-    def add_or_update_image(self, image_path: str, metadata: Dict) -> None:
+    async def add_or_update_image(self, image_path: str, metadata: Dict) -> None:
         """
         Add or update image metadata in the vector store.
         
         This method:
         1. Combines text fields for embedding
         2. Prepares metadata for storage
-        3. Checks if document exists
-        4. Adds or updates the document accordingly
+        3. Updates existing entry or creates new one
         
         Args:
             image_path (str): Path to the image file
-            metadata (Dict): Dictionary containing image metadata
+            metadata (Dict): Image metadata including description, tags, and text content
             
         Raises:
-            Exception: If adding/updating fails
+            Exception: If there's an error adding/updating the vector store entry
         """
         try:
             logger.info(f"Adding/updating vector store entry for: {image_path}")
@@ -162,7 +218,7 @@ class VectorStore:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             raise
 
-    def sync_with_metadata(self, folder_path: Path, metadata: Dict[str, Dict]) -> None:
+    async def sync_with_metadata(self, folder_path: Path, metadata: Dict[str, Dict]) -> None:
         """
         Synchronize vector store with metadata JSON.
         
@@ -200,7 +256,7 @@ class VectorStore:
             
             # Add or update documents from metadata
             for image_path, meta in metadata.items():
-                self.add_or_update_image(image_path, meta)
+                await self.add_or_update_image(image_path, meta)
                 
             logger.info("Successfully synchronized vector store with metadata")
             
@@ -267,6 +323,12 @@ class VectorStore:
         """
         try:
             logger.info(f"Starting vector search for query: '{query}' (limit: {limit})")
+            
+            # Handle empty or invalid queries
+            if not query or not isinstance(query, str):
+                logger.debug("Empty or invalid query, returning empty results")
+                return []
+            
             # Query the collection
             results = self.collection.query(
                 query_texts=[query],

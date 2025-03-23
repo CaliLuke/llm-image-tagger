@@ -13,6 +13,11 @@ The module implements safe file operations with:
 - File permission checks
 - Atomic file operations
 - Data validation
+
+Metadata Storage:
+- Each image folder contains its own metadata file (image_metadata.json)
+- Metadata stays with the images when folders are moved
+- Future versions will store metadata in image files using EXIF/XMP
 """
 
 from pathlib import Path
@@ -20,10 +25,13 @@ from typing import Dict, Set
 import json
 import hashlib
 import traceback
+import os
+import time
 
 from ..core.settings import settings
 from ..core.logging import logger
 from ..models.schemas import ImageInfo
+from ..services.storage import file_storage
 
 def get_supported_extensions() -> Set[str]:
     """
@@ -163,117 +171,86 @@ def scan_folder_for_images(folder_path: Path) -> Dict[str, Dict]:
     logger.info(f"Found {len(metadata)} valid images in {folder_path}")
     return metadata
 
-def load_or_create_metadata(folder_path: Path) -> Dict[str, Dict]:
+async def load_or_create_metadata(folder_path: Path) -> Dict[str, Dict]:
     """
-    Load metadata from file or create new if it doesn't exist.
-    
-    This function:
-    1. Locates or creates the data directory
-    2. Generates a unique metadata filename using folder hash
-    3. Attempts to load existing metadata
-    4. Creates new metadata if none exists
-    5. Saves metadata to disk
-    
-    File operations are handled safely with:
-    - Permission checks
-    - Error handling
-    - Atomic writes
-    - Detailed logging
-    
-    The metadata file is stored as:
-    data/metadata_<folder_hash>.json
+    Load existing metadata file or create new one if it doesn't exist.
+    Update metadata by adding new images and removing old records.
     
     Args:
-        folder_path (Path): Path to the folder containing images
+        folder_path: Path to the folder containing the metadata file
         
     Returns:
-        Dict[str, Dict]: Dictionary containing metadata for all images
+        Dictionary of image paths and their metadata
         
     Raises:
-        Exception: If directory creation or file operations fail
-        
-    Logs:
-        - INFO: Operation progress and file details
-        - ERROR: File operation failures with stack traces
+        PermissionError: If metadata file cannot be read/written due to permissions
+        StorageError: If there are other storage-related errors
     """
+    metadata_file = folder_path / "image_metadata.json"
+    image_extensions = get_supported_extensions()
+    
     logger.info(f"Loading/creating metadata for folder: {folder_path}")
-    
-    # Get the project root directory (3 levels up from helpers.py)
-    project_root = Path(__file__).parent.parent.parent.parent
-    logger.info(f"Project root directory: {project_root}")
-    
-    # Create data directory if it doesn't exist
-    data_dir = project_root / "data"
-    logger.info(f"Data directory path: {data_dir}")
-    try:
-        data_dir.mkdir(exist_ok=True)
-        logger.info(f"Data directory exists: {data_dir.exists()}")
-        logger.info(f"Data directory permissions: {oct(data_dir.stat().st_mode)[-3:]}")
-    except Exception as e:
-        logger.error(f"Error creating/checking data directory: {str(e)}")
-        logger.error(f"Exception type: {type(e)}")
-        logger.error(f"Exception traceback: {traceback.format_exc()}")
-        raise
-    
-    # Create a unique filename based on the folder path
-    folder_hash = hashlib.md5(str(folder_path).encode()).hexdigest()
-    metadata_file = data_dir / f"metadata_{folder_hash}.json"
     logger.info(f"Metadata file path: {metadata_file}")
     
-    # Try to load existing metadata
-    try:
-        if metadata_file.exists():
-            logger.info(f"Found existing metadata file at {metadata_file}")
-            logger.info(f"Metadata file permissions: {oct(metadata_file.stat().st_mode)[-3:]}")
-            with open(metadata_file, 'r') as f:
-                metadata = json.load(f)
-                logger.info(f"Successfully loaded metadata with {len(metadata)} entries")
-                return metadata
-        else:
-            logger.info(f"No existing metadata file found at {metadata_file}")
-    except Exception as e:
-        logger.error(f"Error loading metadata file: {str(e)}")
-        logger.error(f"Exception type: {type(e)}")
-        logger.error(f"Exception traceback: {traceback.format_exc()}")
-    
-    # Create new metadata
-    logger.info("Creating new metadata dictionary")
+    # Load existing metadata if it exists
     metadata = {}
-    
-    # Scan for images
-    logger.info(f"Scanning for images in folder: {folder_path}")
-    logger.info(f"Folder permissions: {oct(folder_path.stat().st_mode)[-3:]}")
-    
+    if await file_storage.exists(metadata_file):
+        logger.info(f"Found existing metadata file")
+        try:
+            metadata = await file_storage.read(metadata_file)
+            logger.info(f"Successfully loaded metadata with {len(metadata)} entries")
+        except Exception as e:
+            logger.error(f"Error loading metadata file: {str(e)}")
+            logger.error(f"Exception type: {type(e)}")
+            logger.error(f"Exception traceback: {traceback.format_exc()}")
+            raise
+
+    # Scan folder for current images
+    logger.info("Scanning for current images")
+    current_images = {str(file_path.relative_to(folder_path)): file_path
+                      for file_path in folder_path.rglob("*")
+                      if file_path.suffix.lower() in image_extensions}
+    logger.info(f"Found {len(current_images)} images in folder")
+
+    # Add new images to metadata
+    for rel_path in current_images:
+        if rel_path not in metadata:
+            logger.info(f"Adding new image to metadata: {rel_path}")
+            metadata[rel_path] = initialize_image_metadata(rel_path)
+        # Update is_processed based on metadata content
+        metadata[rel_path]["is_processed"] = is_metadata_processed(metadata[rel_path])
+
+    # Remove old records from metadata
+    for rel_path in list(metadata.keys()):
+        if rel_path not in current_images:
+            logger.info(f"Removing stale metadata for: {rel_path}")
+            del metadata[rel_path]
+
+    # Save updated metadata
     try:
-        for file_path in folder_path.iterdir():
-            if file_path.suffix.lower() in settings.SUPPORTED_EXTENSIONS:
-                logger.info(f"Found image: {file_path}")
-                logger.info(f"File permissions: {oct(file_path.stat().st_mode)[-3:]}")
-                rel_path = str(file_path.relative_to(folder_path))
-                metadata[rel_path] = {
-                    "path": rel_path,
-                    "filename": file_path.name,
-                    "size": file_path.stat().st_size,
-                    "modified": file_path.stat().st_mtime
-                }
-    except Exception as e:
-        logger.error(f"Error scanning folder for images: {str(e)}")
-        logger.error(f"Exception type: {type(e)}")
-        logger.error(f"Exception traceback: {traceback.format_exc()}")
-        raise
-    
-    # Save metadata
-    try:
-        logger.info(f"Saving metadata to {metadata_file}")
-        with open(metadata_file, 'w') as f:
-            json.dump(metadata, f, indent=2)
+        logger.info("Saving metadata")
+        await file_storage.write(metadata_file, metadata)
         logger.info(f"Successfully saved metadata with {len(metadata)} entries")
+    except PermissionError as e:
+        # Check if this is an external drive error
+        if "external drive" in str(e):
+            logger.error(f"External drive permission error: {str(e)}")
+            # Return metadata without saving - this allows read-only mode
+            logger.warning(f"Operating in read-only mode for folder: {folder_path}")
+            # Re-raise with a more specific message for the API
+            raise PermissionError(f"External drive permission error: {str(e)}")
+        else:
+            # Other permission error
+            logger.error(f"Permission error saving metadata: {str(e)}")
+            logger.error(f"Exception type: {type(e)}")
+            logger.error(f"Exception traceback: {traceback.format_exc()}")
+            raise
     except Exception as e:
-        logger.error(f"Error saving metadata file: {str(e)}")
+        logger.error(f"Error saving metadata: {str(e)}")
         logger.error(f"Exception type: {type(e)}")
         logger.error(f"Exception traceback: {traceback.format_exc()}")
         raise
-    
+
     return metadata
 
 def create_image_info(rel_path: str, metadata: Dict[str, Dict]) -> ImageInfo:
@@ -282,7 +259,7 @@ def create_image_info(rel_path: str, metadata: Dict[str, Dict]) -> ImageInfo:
     
     This function:
     1. Extracts the image name from the path
-    2. Retrieves metadata for the image
+    2. Retrieves metadata for the image, with intelligent key matching
     3. Constructs the image access URL
     4. Creates a Pydantic model instance
     
@@ -290,6 +267,7 @@ def create_image_info(rel_path: str, metadata: Dict[str, Dict]) -> ImageInfo:
     - Using empty defaults for missing fields
     - Maintaining consistent types
     - Ensuring URL format consistency
+    - Searching for metadata by filename if exact key not found
     
     Args:
         rel_path (str): Relative path to the image
@@ -307,19 +285,45 @@ def create_image_info(rel_path: str, metadata: Dict[str, Dict]) -> ImageInfo:
     """
     # Get the image name from the path
     name = Path(rel_path).name
+    logger.debug(f"Creating ImageInfo for image path: {rel_path}")
     
-    # Get metadata for this image
+    # Try to find metadata by the exact key first
     img_metadata = metadata.get(rel_path, {})
     
-    # Create the image URL
+    # If no metadata found and rel_path is just a filename, try to find it by filename
+    if not img_metadata and '/' not in rel_path and '\\' not in rel_path:
+        logger.debug(f"No direct metadata match for key: {rel_path}, attempting filename matching")
+        # We might be dealing with just a filename, so try to find it among the keys
+        matching_keys = [k for k in metadata.keys() if Path(k).name == rel_path]
+        if matching_keys:
+            # Use the first matching key
+            logger.info(f"Metadata key match: matched filename {rel_path} to path {matching_keys[0]}")
+            img_metadata = metadata.get(matching_keys[0], {})
+        else:
+            logger.debug(f"No metadata matches found for filename: {rel_path}")
+    
+    # Get processing status
+    is_processed = img_metadata.get("is_processed", False)
+    
+    # Construct the URL for accessing the image
     url = f"/image/{rel_path}"
     
-    return ImageInfo(
+    # Create the ImageInfo object
+    image_info = ImageInfo(
         name=name,
         path=rel_path,
-        url=url,  # Add the URL field
+        url=url,
         description=img_metadata.get("description", ""),
         tags=img_metadata.get("tags", []),
         text_content=img_metadata.get("text_content", ""),
-        is_processed=img_metadata.get("is_processed", False)
-    ) 
+        is_processed=is_processed
+    )
+    
+    # Log details at appropriate level based on processing status
+    if is_processed:
+        logger.info(f"Created ImageInfo for processed image: {rel_path}, tags: {len(image_info.tags)}, has_description: {bool(image_info.description)}")
+        logger.debug(f"Full metadata for processed image: {img_metadata}")
+    else:
+        logger.debug(f"Created ImageInfo for unprocessed image: {rel_path}")
+    
+    return image_info 

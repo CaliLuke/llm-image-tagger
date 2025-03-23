@@ -17,7 +17,7 @@ def test_settings_defaults():
     assert settings.API_PORT == 8000
     
     logger.debug("Checking Ollama settings")
-    assert settings.OLLAMA_MODEL == "llama3.2-vision"
+    assert settings.OLLAMA_MODEL == "gemma3:4b"
     assert settings.OLLAMA_HOST == "http://localhost:11434"
     
     logger.debug("Checking folder settings")

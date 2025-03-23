@@ -113,7 +113,17 @@ class QueueProcessor:
         processed_count = 0
         
         try:
-            while not self.queue.should_stop and (task := self.queue.get_next_task()):
+            # First check if queue is empty
+            if not self.queue.queue:
+                logger.info("Queue is empty, nothing to process")
+                return
+
+            while not self.queue.should_stop:
+                task = self.queue.get_next_task()
+                if task is None:
+                    logger.info("No more tasks in queue")
+                    break
+                    
                 logger.debug(f"Processing task {processed_count + 1}")
                 await self._process_task(task)
                 processed_count += 1

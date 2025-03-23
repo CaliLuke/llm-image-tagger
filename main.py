@@ -1,9 +1,8 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-import logging
+from backend.app.core.logging import logger
 
 from backend.app.api.routes import router
-from backend.app.core.logging import logger
 
 app = FastAPI()
 
@@ -12,12 +11,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include the router
 app.include_router(router)
-
-# Set up basic logging configuration
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 
 if __name__ == "__main__":
     import uvicorn

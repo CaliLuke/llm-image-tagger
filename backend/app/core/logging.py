@@ -18,6 +18,7 @@ Features:
 
 import logging
 import sys
+import os
 from .settings import settings
 
 def setup_logging():
@@ -55,28 +56,84 @@ def setup_logging():
     # Get log level from settings, default to INFO
     log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
     
+    # Create logs directory if it doesn't exist
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
+    
     # Configure root logger with consistent format
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        handlers=[
-            logging.StreamHandler(sys.stdout)  # Ensure output goes to stdout
-        ]
+    file_format = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s\n%(pathname)s:%(lineno)d',
+        datefmt='%Y-%m-%d %H:%M:%S'
     )
     
-    # Create our app logger
+    # More concise format for terminal output
+    terminal_format = logging.Formatter(
+        '%(message)s',  # Just the message
+        datefmt='%H:%M:%S'
+    )
+    
+    # Add stdout handler with color formatting
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(terminal_format)
+    stdout_handler.setLevel(logging.WARNING)  # Only show warnings and errors in terminal
+    
+    # Add file handler for persistent logging
+    file_handler = logging.FileHandler(os.path.join(logs_dir, 'app.log'))
+    file_handler.setFormatter(file_format)
+    file_handler.setLevel(logging.DEBUG)  # Always log everything to file
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+    
+    # Remove any existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Add our handlers
+    root_logger.addHandler(stdout_handler)
+    root_logger.addHandler(file_handler)
+    
+    # Configure third-party loggers
+    logging.getLogger('uvicorn').setLevel(logging.WARNING)
+    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
+    logging.getLogger('chromadb').setLevel(logging.WARNING)
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('PIL.Image').setLevel(logging.WARNING)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
+    logging.getLogger('PIL.JpegImagePlugin').setLevel(logging.WARNING)
+    
+    # Configure module-specific log levels
+    logging.getLogger('app.api.routes').setLevel(logging.WARNING)
+    logging.getLogger('app.api.routers.images').setLevel(logging.WARNING)
+    logging.getLogger('app.utils.helpers').setLevel(logging.WARNING)  # Reduce file operation noise
+    logging.getLogger('app.services.image_processor').setLevel(logging.INFO)  # Keep important processing logs
+    
+    # Create our app logger with separate terminal handler for important info
     app_logger = logging.getLogger("app")
     app_logger.setLevel(log_level)
+    app_logger.propagate = False  # Prevent duplicate logs
     
-    # Quiet down some chatty loggers
-    logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    logging.getLogger("chromadb").setLevel(logging.WARNING)
+    # Add a separate handler for app-specific info in terminal
+    app_terminal_handler = logging.StreamHandler(sys.stdout)
+    app_terminal_handler.setFormatter(terminal_format)
+    app_terminal_handler.setLevel(logging.INFO)
+    
+    # Add filters to exclude noisy messages
+    class NoiseFilter(logging.Filter):
+        def filter(self, record):
+            # Skip file operation messages
+            if any(x in record.msg for x in ['File stats:', 'File size:', 'Image format:', 'Image mode:', 'Image size:', 'Serving image file:', 'Response headers:', 'File is readable:', 'File is executable:']):
+                return False
+            return True
+    
+    app_terminal_handler.addFilter(NoiseFilter())
+    app_terminal_handler.addFilter(lambda record: record.name == "app")  # Only show app logs
+    app_logger.addHandler(app_terminal_handler)
     
     return app_logger
 
-# Create a global logger instance
+# Create the global logger instance
 logger = setup_logging()
 
 # Export the logger
