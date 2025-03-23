@@ -271,6 +271,13 @@ llm-image-tagger/
 
 ## API Endpoints
 
+### Directory Navigation
+
+- `GET /directories`: Lists all directories at the specified path or current folder
+  - Takes an optional `path` query parameter
+  - Returns metadata about directories including whether they contain images or metadata
+  - Handles permission errors gracefully with descriptive error messages
+
 ### Search Endpoints
 
 - `POST /search`: Performs hybrid search combining vector similarity and full-text search

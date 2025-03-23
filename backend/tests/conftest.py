@@ -8,18 +8,18 @@ import os
 import tempfile
 import shutil
 import logging
-from backend.app.services.processing_queue import ProcessingQueue
-from backend.app.services.queue_processor import QueueProcessor
-from backend.app.services.vector_store import VectorStore
-from backend.app.api.routes import router
-from backend.app.models.schemas import ImageDescription, ImageTags, ImageText
+from app.services.processing_queue import ProcessingQueue
+from app.services.queue_processor import QueueProcessor
+from app.services.vector_store import VectorStore
+from app.api.routes import router
+from app.models.schemas import ImageDescription, ImageTags, ImageText
 
 # Set up logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 # Add the backend directory to the path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../backend')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from main import app
 

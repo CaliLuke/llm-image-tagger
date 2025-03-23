@@ -29,6 +29,7 @@ import time
 import hashlib
 from typing import Dict, Any, List, Tuple, Optional
 import traceback
+from fastapi import HTTPException
 
 # Add the parent directory to the path so we can import the app
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -85,8 +86,7 @@ def mock_metadata_operations():
          patch(f'{TEST_PATHS["vector_store"]}.add_or_update_image') as mock_add_or_update, \
          patch(f'{TEST_PATHS["helpers"]}.load_or_create_metadata') as mock_get_metadata, \
          patch('app.services.storage.file_storage') as mock_file_storage_app, \
-         patch('backend.app.services.storage.file_storage') as mock_file_storage_backend, \
-         patch('backend.app.utils.helpers.file_storage') as mock_file_storage_helpers, \
+         patch('app.utils.helpers.file_storage') as mock_file_storage_helpers, \
          patch(f'{TEST_PATHS["storage_service"]}.FileSystemStorage._check_path_permissions') as mock_check_permissions, \
          patch('os.access', return_value=True) as mock_os_access, \
          patch('pathlib.Path.exists', return_value=True) as mock_path_exists, \
@@ -133,7 +133,7 @@ def mock_metadata_operations():
         mock_check_permissions.return_value = None
         
         # Set up all file_storage mocks with the same behavior
-        for mock_fs in [mock_file_storage_app, mock_file_storage_backend, mock_file_storage_helpers]:
+        for mock_fs in [mock_file_storage_app, mock_file_storage_helpers]:
             mock_fs.exists = AsyncMock(side_effect=mock_exists)
             mock_fs.read = AsyncMock(side_effect=mock_read)
             mock_fs.write = AsyncMock(side_effect=mock_write)
@@ -809,3 +809,54 @@ async def test_folder_reload_with_metadata(client, test_folder, mock_metadata_op
         # Verify the image info contains the expected test image
         image_paths = [img["path"] for img in data["images"]]
         assert "test_image.png" in image_paths
+
+@pytest.mark.asyncio
+async def test_directory_listing_direct(client, test_folder, mock_metadata_operations):
+    """
+    Test directory listing endpoint by verifying response structure.
+    
+    Instead of complex mocking, we simply assert that the endpoint returns
+    a properly structured response, regardless of the actual content.
+    """
+    # Set the current folder and let the actual endpoint do its work
+    router.current_folder = str(test_folder)
+    
+    # Directly call the endpoint
+    response = client.get("/directories")
+    
+    # Simply verify that the response has the expected structure
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Check that the response contains a directories key with an array of directories
+    assert "directories" in data
+    assert isinstance(data["directories"], list)
+    
+    # Check that each directory has the expected fields
+    for directory in data["directories"]:
+        assert "name" in directory
+        assert "path" in directory
+        assert "hasImages" in directory
+        assert "hasMetadata" in directory
+        
+        # Error field should exist but might be None
+        assert "error" in directory
+        
+        # ImageCount should exist for directories with images
+        if directory["hasImages"]:
+            assert "imageCount" in directory
+            assert isinstance(directory["imageCount"], int)
+
+
+@pytest.mark.asyncio
+async def test_directory_listing_no_folder_error(client):
+    """Test the error case where no folder is selected."""
+    # Make sure no folder is selected
+    router.current_folder = None
+    
+    # Call the endpoint
+    response = client.get("/directories")
+    
+    # Verify error response
+    assert response.status_code == 400
+    assert "No folder selected" in response.json()["detail"]

@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Any, AsyncGenerator
 import json
 import subprocess
 import time
-from backend.app.models.schemas import ImageDescription, ImageTags, ImageText
+from ..models.schemas import ImageDescription, ImageTags, ImageText
 import hashlib
 import traceback
 import base64

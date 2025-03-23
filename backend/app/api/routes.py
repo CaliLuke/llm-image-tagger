@@ -19,7 +19,9 @@ from ..models.schemas import (
     UpdateImageMetadata,
     ImagesResponse,
     SearchResponse,
-    ProcessResponse
+    ProcessResponse,
+    DirectoryInfo,
+    DirectoriesResponse
 )
 from ..services.image_processor import ImageProcessor, update_image_metadata
 from ..services.vector_store import VectorStore
@@ -981,3 +983,89 @@ async def test_process_batch(
         logger.error(f"Error in batch processing test: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/directories", response_model=DirectoriesResponse)
+async def list_directories(path: Optional[str] = None):
+    """
+    List all directories at the specified path or current folder.
+    Includes metadata about which directories contain images.
+    
+    Args:
+        path: Optional path to list directories from. If not provided, uses current folder.
+        
+    Returns:
+        DirectoriesResponse: JSON response with list of directories and their properties
+        
+    Raises:
+        HTTPException: If no folder is selected or there's an error accessing the filesystem
+    """
+    current_path = path or router.current_folder
+    if not current_path:
+        logger.error("No folder selected when trying to list directories")
+        raise HTTPException(status_code=400, detail="No folder selected")
+    
+    logger.info(f"Listing directories in: {current_path}")
+    directories = []
+    
+    try:
+        # Attempt to get the initial directory listing
+        try:
+            entries = list(Path(current_path).iterdir())
+        except (FileNotFoundError, PermissionError, OSError) as e:
+            # If we can't even access the parent directory, fail with error
+            logger.error(f"Cannot access directory {current_path}: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, 
+                               detail=f"Failed to list directories: {str(e)}")
+        
+        # Process each entry individually, handling errors for each entry separately
+        for entry in entries:
+            # Only process directories
+            if not entry.is_dir():
+                continue
+                
+            # Initialize defaults
+            has_images = False
+            has_metadata = False
+            error = None
+            image_count = 0
+            
+            try:
+                # Try to list files in this directory
+                for child in entry.iterdir():
+                    if child.is_file() and child.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']:
+                        image_count += 1
+                        has_images = True
+                
+                # Check if metadata exists for this directory
+                metadata_file = entry / "image_metadata.json"
+                has_metadata = metadata_file.exists()
+                
+                if has_metadata:
+                    logger.debug(f"Found metadata file in directory: {entry.name}")
+                
+            except (PermissionError, OSError) as e:
+                # Handle access errors for individual directories gracefully
+                logger.warning(f"Could not access directory {entry}: {str(e)}")
+                error = f"Access denied: {str(e)}"
+            
+            # Create directory info even if there was an error
+            directory_info = DirectoryInfo(
+                name=entry.name,
+                path=str(entry),
+                hasImages=has_images,
+                hasMetadata=has_metadata,
+                imageCount=image_count if has_images else None,
+                error=error
+            )
+            
+            directories.append(directory_info)
+        
+        logger.info(f"Found {len(directories)} directories in {current_path}")
+        return DirectoriesResponse(directories=directories)
+        
+    except Exception as e:
+        # Catch any other unexpected errors
+        logger.error(f"Error listing directories: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to list directories: {str(e)}")

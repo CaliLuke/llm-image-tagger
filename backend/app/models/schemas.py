@@ -210,4 +210,44 @@ class ImageText(BaseModel):
     """
     has_text: bool = Field(..., description="Whether the image contains text")
     text_content: str = Field("", description="Text content in the image")
+    model_config = ConfigDict(extra="forbid")
+
+class DirectoryInfo(BaseModel):
+    """
+    Model for directory information.
+    
+    Used for:
+    - Directory browser in the UI
+    - Filesystem navigation
+    - Image collection organization
+    
+    Attributes:
+        name (str): Directory name
+        path (str): Full path to the directory
+        hasImages (bool): Whether the directory contains images
+        hasMetadata (bool): Whether the directory has metadata file
+        imageCount (Optional[int]): Count of images if present
+        error (Optional[str]): Error message if there was a problem
+    """
+    name: str = Field(..., description="Directory name")
+    path: str = Field(..., description="Directory path")
+    hasImages: bool = Field(False, description="Whether the directory contains images")
+    hasMetadata: bool = Field(False, description="Whether the directory has a metadata file")
+    imageCount: Optional[int] = Field(None, description="Number of images in the directory")
+    error: Optional[str] = Field(None, description="Error accessing the directory if any")
+    model_config = ConfigDict(extra="forbid")
+
+class DirectoriesResponse(BaseModel):
+    """
+    Response model for directory listing.
+    
+    Used for:
+    - Directory browser in the UI
+    - Filesystem navigation response
+    - Tree view construction
+    
+    Attributes:
+        directories (List[DirectoryInfo]): List of directory information objects
+    """
+    directories: List[DirectoryInfo] = Field(..., description="List of directories")
     model_config = ConfigDict(extra="forbid") 

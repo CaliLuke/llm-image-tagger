@@ -12,11 +12,19 @@ class Settings(BaseSettings):
     
     # Vector store settings
     VECTOR_STORE_PATH: str = "data/vector_store"
+    vector_db_dir_name: str = ".vectordb"
+    
+    # API settings
+    api_host: str = "127.0.0.1"
+    api_port: str = "8000"
+    
+    # Logging settings
+    log_level: str = "INFO"
     
     # Queue settings
     MAX_QUEUE_SIZE: int = 100
     PROCESSING_INTERVAL: float = 1.0  # seconds
     
-    model_config = ConfigDict(env_file=".env")
+    model_config = ConfigDict(env_file=".env", extra="allow")
 
 settings = Settings() 
