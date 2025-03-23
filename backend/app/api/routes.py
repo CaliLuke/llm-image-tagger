@@ -438,8 +438,16 @@ async def process_image(
                 content={"success": False, "message": "image_path is required"}
             )
         
+        # Check if current folder is set
+        if not router.current_folder:
+            logger.error("No folder selected for processing images")
+            return JSONResponse(
+                status_code=200,
+                content={"success": False, "message": "No folder selected. Please select a folder first."}
+            )
+        
         # Convert to Path object and resolve relative to current folder
-        image_path = Path(get_current_folder()) / Path(image_path)
+        image_path = Path(router.current_folder) / Path(image_path)
         
         # Ensure image exists
         if not image_path.exists():
@@ -461,16 +469,16 @@ async def process_image(
                     # If this is the final update with metadata, update storage
                     if "image" in update:
                         # Get the relative path for the image
-                        rel_path = str(image_path.relative_to(Path(get_current_folder())))
+                        rel_path = str(image_path.relative_to(Path(router.current_folder)))
                         
                         # Load current metadata
-                        metadata = await load_or_create_metadata(Path(get_current_folder()))
+                        metadata = await load_or_create_metadata(Path(router.current_folder))
                         
                         # Update metadata for this image
                         metadata[rel_path] = update["image"]
                         
                         # Save updated metadata to image folder
-                        metadata_file = Path(get_current_folder()) / "image_metadata.json"
+                        metadata_file = Path(router.current_folder) / "image_metadata.json"
                         await file_storage.write(metadata_file, metadata)
                         
                         # Update vector store

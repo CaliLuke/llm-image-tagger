@@ -36,6 +36,7 @@ Thumbs.db
 # ChromaDB files
 .vectordb/
 .chroma/
+data/vectordb/chroma.sqlite3
 
 # Logs
 *.log

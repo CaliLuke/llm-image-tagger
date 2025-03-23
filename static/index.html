@@ -581,8 +581,10 @@
                     }
                 }
 
-                const processImage = async (image) => {
-                    await logButtonClick('Process Single Image', { image: image.path });
+                const processImage = async (image, skipLogging = false) => {
+                    if (!skipLogging) {
+                        await logButtonClick('Process Single Image', { image: image.path });
+                    }
                     image.processing = true;
                     image.progress = 0;  // Initialize progress
                     
@@ -812,16 +814,9 @@
 
                             try {
                                 currentImageName.value = image.name;
-                                const response = await processImage(image);
+                                await processImage(image, true); // Skip logging the button click
                                 
-                                if (!response || !response.success) {
-                                    if (response && response.message === 'Processing stopped by user') {
-                                        showInfo('Processing Stopped', 'Processing stopped by user');
-                                        break;
-                                    }
-                                    throw new Error(response ? response.message : 'Failed to process image');
-                                }
-                                
+                                // If we get here, processing was successful
                                 processedCount.value++;
                                 await logToServer('PROCESSING', { message: `Successfully processed ${image.name}` });
                             } catch (err) {
