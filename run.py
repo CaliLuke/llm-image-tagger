@@ -50,9 +50,14 @@ def check_existing_instance(host, port):
                     continue
             # Port is in use but not by our application
             return False
-        # Other socket error
         logger.error(f"Socket error: {e}")
         return False
+
+def run_tests():
+    """Run tests to verify the application is working."""
+    print("Running tests...")
+    result = subprocess.run([sys.executable, "-m", "pytest", "-v"])
+    return result.returncode == 0
 
 def parse_args():
     """Parse command line arguments."""
@@ -64,15 +69,6 @@ def parse_args():
     parser.add_argument("--skip-tests", action="store_true", help="Skip running tests even in debug mode")
     parser.add_argument("--force", action="store_true", help="Force start even if port appears to be in use")
     return parser.parse_args()
-
-def run_tests():
-    """Run the test suite."""
-    print("\nRunning test suite...")
-    result = subprocess.run([sys.executable, "-m", "pytest", "-v"], text=True)
-    if result.returncode != 0:
-        print("Tests failed! Please fix the failing tests before continuing.")
-        return False
-    return True
 
 def main():
     """Main function to run the application."""

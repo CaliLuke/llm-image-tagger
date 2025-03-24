@@ -224,6 +224,44 @@ llm-image-tagger/
     ollama pull llama3.2-vision
     ```
 
+## Running the Application
+
+You can run the application using the `run.py` script, which provides several command-line options:
+
+```bash
+python run.py [options]
+```
+
+### Command-Line Options
+
+| Option | Description |
+|--------|-------------|
+| `--host HOST` | Host to run the server on (default: 127.0.0.1) |
+| `--port PORT` | Port to run the server on (default: 8000) |
+| `--no-browser` | Don't open the browser automatically |
+| `--debug` | Run in debug mode with tests |
+| `--skip-tests` | Skip running tests even in debug mode |
+| `--force` | Force start even if port appears to be in use |
+
+### Examples
+
+```bash
+# Run with default settings
+python run.py
+
+# Run on a specific port
+python run.py --port 8080
+
+# Run in debug mode with automatic reloading
+python run.py --debug
+
+# Run without opening the browser
+python run.py --no-browser
+
+# Force start even if the port is in use
+python run.py --force
+```
+
 ## Usage
 
 1. **Activate the virtual environment:**

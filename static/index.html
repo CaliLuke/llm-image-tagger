@@ -65,10 +65,25 @@
                 </div>
             </transition-group>
         </div>
+
+        <!-- Global Header - Appears on all views -->
+        <header class="bg-white shadow-sm">
+            <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-semibold text-gray-800">Image Tagger</h1>
+                    <span v-if="folderOpened" class="ml-2 text-sm text-gray-500">v1.1</span>
+                </div>
+                <div class="text-sm text-gray-600">
+                    <span v-if="folderOpened" class="mr-4">{{ folderPath }}</span>
+                    <a href="/docs" target="_blank" class="text-blue-600 hover:underline mr-3">Swagger UI</a>
+                    <a href="/redoc" target="_blank" class="text-blue-600 hover:underline">ReDoc</a>
+                </div>
+            </div>
+        </header>
+        
         <!-- Initial Select Folder View -->
         <div v-if="!folderOpened" class="h-screen flex flex-col items-center justify-center">
             <div class="text-center">
-                <h1 class="text-3xl font-semibold text-gray-800 mb-6">Image Tagger</h1>
                 <div class="flex flex-col gap-4">
                     <div class="flex gap-2 items-center">
                         <input 
@@ -96,13 +111,8 @@
                 </div>
             </div>
             
-            <!-- API Documentation Footer -->
+            <!-- Queue feature toggle - moved from footer -->
             <div class="absolute bottom-4 text-xs text-gray-500">
-                <p>API Documentation: 
-                    <a href="/docs" target="_blank" class="text-blue-600 hover:underline">Swagger UI</a> | 
-                    <a href="/redoc" target="_blank" class="text-blue-600 hover:underline">ReDoc</a>
-                </p>
-                <!-- Add queue feature toggle (hidden by default) -->
                 <div class="mt-2 flex items-center gap-2">
                     <input type="checkbox" id="useQueueToggle" v-model="useQueue" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
                     <label for="useQueueToggle" class="text-xs text-gray-600">Use Queue Processing (Experimental)</label>
@@ -112,12 +122,8 @@
 
         <!-- Main Content View (after folder selection) -->
         <div v-else class="container mx-auto px-4 py-6">
-            <!-- Header with Title and Search -->
+            <!-- Modified search section (removed duplicate title) -->
             <div class="mb-8">
-                <h1 class="text-2xl font-semibold text-gray-800 text-center mb-2">Image Tagger</h1>
-                <p v-if="folderPath" class="text-sm text-gray-600 text-center mb-6">
-                    Folder Opened: {{ folderPath }}
-                </p>
                 <div class="max-w-4xl mx-auto">
                     <div class="relative flex gap-2">
                         <div class="relative flex-1">
@@ -246,14 +252,6 @@
                    (Processed: {{ images.filter(img => img.is_processed).length }},
                    Unprocessed: {{ images.filter(img => !img.is_processed).length }})
                    </span>
-                </p>
-            </div>
-
-            <!-- API Documentation Footer -->
-            <div class="mt-8 text-center text-xs text-gray-500">
-                <p>API Documentation: 
-                    <a href="/docs" target="_blank" class="text-blue-600 hover:underline">Swagger UI</a> | 
-                    <a href="/redoc" target="_blank" class="text-blue-600 hover:underline">ReDoc</a>
                 </p>
             </div>
         </div>

@@ -35,7 +35,30 @@ We plan to restructure the application UI with these improvements:
    - Ensure grid displays properly in the new layout
    - Maintain all current image processing capabilities
 
-## 3. Implementation Steps
+## 3. Implementation Approach
+
+We will use a simple, direct approach to implement these changes:
+
+1. **Maintain Single-File Architecture**
+   - Continue using the static/index.html file with embedded Vue.js code
+   - Use Vue.js components within the single file
+   - No need for npm, Vite, or other build tools
+   - Organize code into logical sections with clear comments
+
+2. **Component Organization**
+   - Create well-defined Vue components within the single file
+   - Use clear section delimiters and comments
+   - Maintain component hierarchy for clean organization
+   - Ensure proper event handling between components
+
+3. **Benefits of This Approach**
+   - No build step required
+   - No additional dependencies
+   - Easier maintenance (all code in one file)
+   - Compatible with the existing backend
+   - Simpler deployment and debugging
+
+## 4. Implementation Steps
 
 ### Phase 1: Project Setup and Analysis
 
@@ -72,7 +95,7 @@ Next technical requirements:
 
 ### Phase 3: Header Redesign
 
-- [ ] Create new header component in HTML/CSS
+- [ ] Modify the existing header section in index.html
 - [ ] Move API documentation links from footer to header
 - [ ] Add application name and styling
 - [ ] Test header across all application states (initial, main view)
@@ -81,7 +104,7 @@ Next technical requirements:
 ### Phase 4: Master-Detail Layout Implementation
 
 - [ ] Restructure main content container to support split view
-- [ ] Create directory tree component for sidebar
+- [ ] Create directory tree component within the single file
   - Implement component with proper styling
   - Set minimum width constraint (e.g., min-w-64 or 16rem)
   - Create responsive behavior for smaller screens
@@ -116,7 +139,7 @@ Next technical requirements:
   - Test across multiple folders
 - [ ] Final review and refinement
 
-## 4. Testing Plan
+## 5. Testing Plan
 
 ### Functionality Tests
 
@@ -175,7 +198,7 @@ Next technical requirements:
    - [ ] Test keyboard navigation where applicable
    - [ ] Verify modal interactions in new layout
 
-## 5. Implementation Details
+## 6. Implementation Details
 
 ### Directory Browser Component
 
@@ -301,7 +324,7 @@ async function selectDirectory(directoryPath) {
 }
 ```
 
-## 6. Fallback and Error Handling
+## 7. Fallback and Error Handling
 
 - Implement graceful degradation if directory listing fails
 - Add error notifications for directory access issues
@@ -310,16 +333,15 @@ async function selectDirectory(directoryPath) {
 - Log all errors with appropriate context
 - Handle permissions and access issues elegantly
 
-## 7. Performance Considerations
+## 8. Performance Considerations
 
 - Optimize directory scanning to minimize delays
-- Consider lazy-loading for large directory structures
+- Consider caching directory information where appropriate
 - Implement efficient state management to reduce rerenders
-- Cache directory information when appropriate
 - Use loading indicators for long-running operations
 - Consider pagination for directories with many subdirectories
 
-## 8. Metadata Synchronization Strategy
+## 9. Metadata Synchronization Strategy
 
 To maintain consistency between all storage layers, we'll follow these principles:
 
@@ -343,9 +365,9 @@ To maintain consistency between all storage layers, we'll follow these principle
    - Verify metadata consistency after directory changes
    - Simulate error conditions to test recovery
 
-## 9. Conclusion
+## 10. Conclusion
 
-This plan outlines a methodical approach to restructuring the UI with a new header and master-detail layout. By following a phased implementation with thorough testing at each step, we can ensure the new UI improves usability while maintaining all existing functionality and data integrity.
+This plan outlines a methodical approach to restructuring the UI with a new header and master-detail layout. By using a simple, direct approach with the existing single-file architecture, we can improve the UI while avoiding unnecessary complexity.
 
 The implementation will prioritize:
 
