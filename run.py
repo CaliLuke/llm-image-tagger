@@ -6,14 +6,28 @@ This script starts the backend server and opens the web interface.
 
 import os
 import sys
-import webbrowser
-import time
-import subprocess
 import argparse
-import socket
+import subprocess
+import time
+import signal
 import psutil
+import atexit
 import logging
+from pathlib import Path
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import webbrowser
+import socket
 
+# Add the backend directory to the Python path
+backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend")
+sys.path.insert(0, backend_dir)
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+)
 logger = logging.getLogger(__name__)
 
 def check_existing_instance(host, port):

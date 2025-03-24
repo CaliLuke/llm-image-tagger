@@ -382,23 +382,39 @@ async def test_update_metadata(initialized_folder, client, mock_image_processor,
     # Add the metadata for our test image
     mock_metadata_operations['metadata'][image_filename] = mock_metadata
     
-    # Update tags for the test image
-    new_tags = ["updated", "tags"]
-    response = client.post(
-        "/update-metadata",
-        json={
-            "path": image_filename,
-            "tags": new_tags,
-            "description": None,
-            "text_content": None
-        }
-    )
+    # Create a path for the test image
+    test_image_path = Path(initialized_folder) / image_filename
     
-    # Verify the API returns expected response
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-    update_response = response.json()
-    assert update_response.get("success", False) is True
-    assert "message" in update_response
+    # Define our mock functions for both rglob and glob
+    def mock_rglob(self, pattern):
+        if pattern == "*" or pattern.startswith("*."):
+            return [test_image_path]
+        return []
+    
+    def mock_glob(self, pattern):
+        if pattern.startswith("*."):
+            return [test_image_path]
+        return []
+    
+    # Apply the mocks
+    with patch('pathlib.Path.rglob', mock_rglob), patch('pathlib.Path.glob', mock_glob):
+        # Update tags for the test image
+        new_tags = ["updated", "tags"]
+        response = client.post(
+            "/update-metadata",
+            json={
+                "path": image_filename,
+                "tags": new_tags,
+                "description": None,
+                "text_content": None
+            }
+        )
+        
+        # Verify the API returns expected response
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+        update_response = response.json()
+        assert update_response.get("success", False) is True
+        assert "message" in update_response
 
 @pytest.mark.asyncio
 async def test_search_with_results_mocked(initialized_folder, client, mock_metadata_operations, mock_image_processor):
@@ -785,7 +801,13 @@ async def test_folder_reload_with_metadata(client, test_folder, mock_metadata_op
     
     # Mock Path.rglob to only return our test image
     def mock_rglob(self, pattern):
-        if pattern == "*":
+        if pattern == "*" or pattern.startswith("*."):
+            return [test_image_path]
+        return []
+    
+    # Mock Path.glob to also return our test image
+    def mock_glob(self, pattern):
+        if pattern.startswith("*."):
             return [test_image_path]
         return []
     
@@ -793,7 +815,8 @@ async def test_folder_reload_with_metadata(client, test_folder, mock_metadata_op
     with patch('chromadb.PersistentClient', return_value=mock_client), \
          patch('chromadb.utils.embedding_functions.DefaultEmbeddingFunction', return_value=mock_embedding_fn), \
          patch('backend.app.api.routes.data_dir', tmp_path), \
-         patch('pathlib.Path.rglob', mock_rglob):
+         patch('pathlib.Path.rglob', mock_rglob), \
+         patch('pathlib.Path.glob', mock_glob):
         
         # WHEN: We load the folder
         response = client.post("/images", json={"folder_path": str(test_folder)})

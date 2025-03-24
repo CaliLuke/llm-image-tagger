@@ -234,6 +234,7 @@ class DirectoryInfo(BaseModel):
     hasImages: bool = Field(False, description="Whether the directory contains images")
     hasMetadata: bool = Field(False, description="Whether the directory has a metadata file")
     imageCount: Optional[int] = Field(None, description="Number of images in the directory")
+    image_count: Optional[int] = Field(None, description="Number of images in the directory")
     error: Optional[str] = Field(None, description="Error accessing the directory if any")
     model_config = ConfigDict(extra="forbid")
 
@@ -247,7 +248,27 @@ class DirectoriesResponse(BaseModel):
     - Tree view construction
     
     Attributes:
-        directories (List[DirectoryInfo]): List of directory information objects
+        directories (List[DirectoryInfo]): List of directory info objects
     """
     directories: List[DirectoryInfo] = Field(..., description="List of directories")
+    model_config = ConfigDict(extra="forbid")
+
+class VectorStoreInitResponse(BaseModel):
+    """
+    Response model for vector store initialization.
+    
+    Used for:
+    - Vector store initialization response
+    - Reporting status of vector store initialization
+    
+    Attributes:
+        success (bool): Whether the initialization was successful
+        message (str): Status message
+        imageCount (int): Number of images in the folder
+        processedCount (int): Number of images that have been processed
+    """
+    success: bool = Field(..., description="Whether the initialization was successful")
+    message: str = Field(..., description="Status message")
+    imageCount: int = Field(..., description="Number of images in the folder")
+    processedCount: int = Field(..., description="Number of processed images")
     model_config = ConfigDict(extra="forbid") 

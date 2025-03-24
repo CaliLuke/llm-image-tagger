@@ -28,103 +28,32 @@
 </head>
 <body class="bg-gray-50">
     <div id="app" class="min-h-screen">
-        <!-- Toaster Notification Component -->
-        <div class="fixed top-4 right-4 z-50 flex flex-col gap-2">
-            <transition-group name="notification">
-                <div v-for="notification in notifications" :key="notification.id"
-                    class="max-w-md p-4 rounded-lg shadow-lg flex items-start gap-3"
-                    :class="{
-                        'bg-red-50 border-l-4 border-red-500': notification.type === 'error',
-                        'bg-yellow-50 border-l-4 border-yellow-500': notification.type === 'warning',
-                        'bg-green-50 border-l-4 border-green-500': notification.type === 'success',
-                        'bg-blue-50 border-l-4 border-blue-500': notification.type === 'info'
-                    }">
-                    <div class="flex-shrink-0">
-                        <div v-if="notification.type === 'error'" class="text-red-500">❌</div>
-                        <div v-if="notification.type === 'warning'" class="text-yellow-500">⚠️</div>
-                        <div v-if="notification.type === 'success'" class="text-green-500">✅</div>
-                        <div v-if="notification.type === 'info'" class="text-blue-500">ℹ️</div>
-                    </div>
-                    <div class="flex-1 pr-4">
-                        <p class="font-semibold" :class="{
-                            'text-red-700': notification.type === 'error',
-                            'text-yellow-700': notification.type === 'warning',
-                            'text-green-700': notification.type === 'success',
-                            'text-blue-700': notification.type === 'info'
-                        }">{{ notification.title }}</p>
-                        <p class="text-sm" :class="{
-                            'text-red-600': notification.type === 'error',
-                            'text-yellow-600': notification.type === 'warning',
-                            'text-green-600': notification.type === 'success',
-                            'text-blue-600': notification.type === 'info'
-                        }">{{ notification.message }}</p>
-                    </div>
-                    <button @click="dismissNotification(notification.id)" class="text-gray-500 hover:text-gray-700">
-                        <span>×</span>
-                    </button>
-                </div>
-            </transition-group>
-        </div>
+        <!-- Use the Notification Component -->
+        <notification-system 
+            :notifications="notifications"
+            @dismiss="dismissNotification"
+        ></notification-system>
 
         <!-- Global Header - Appears on all views -->
-        <header class="bg-white shadow-sm">
-            <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+        <header class="bg-white shadow-sm w-full">
+            <div class="w-full px-6 py-3 flex justify-between items-center">
                 <div class="flex items-center">
                     <h1 class="text-xl font-semibold text-gray-800">Image Tagger</h1>
-                    <span v-if="folderOpened" class="ml-2 text-sm text-gray-500">v1.1</span>
+                    <span class="ml-2 text-sm text-gray-500">v1.1</span>
                 </div>
                 <div class="text-sm text-gray-600">
-                    <span v-if="folderOpened" class="mr-4">{{ folderPath }}</span>
+                    <span v-if="currentDirectory" class="mr-4">{{ currentDirectory }}</span>
                     <a href="/docs" target="_blank" class="text-blue-600 hover:underline mr-3">Swagger UI</a>
                     <a href="/redoc" target="_blank" class="text-blue-600 hover:underline">ReDoc</a>
                 </div>
             </div>
         </header>
         
-        <!-- Initial Select Folder View -->
-        <div v-if="!folderOpened" class="h-screen flex flex-col items-center justify-center">
-            <div class="text-center">
-                <div class="flex flex-col gap-4">
-                    <div class="flex gap-2 items-center">
-                        <input 
-                            v-model="folderPath" 
-                            type="text" 
-                            placeholder="Enter folder path..." 
-                            :disabled="isLoading"
-                            @keyup.enter="openFolder"
-                            class="px-4 py-2 border border-gray-300 rounded-md w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        >
-                        <button @click="openFolder" 
-                                :disabled="isLoading"
-                                class="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center gap-2">
-                            <span v-if="isLoading" class="inline-block animate-spin">↻</span>
-                            {{ isLoading ? 'Opening...' : 'Open Folder' }}
-                        </button>
-                    </div>
-                    <!-- Add loading status message -->
-                    <div v-if="loadingStatus" class="text-sm text-gray-600">
-                        <div class="flex items-center justify-center gap-2">
-                            <div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                            {{ loadingStatus }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Queue feature toggle - moved from footer -->
-            <div class="absolute bottom-4 text-xs text-gray-500">
-                <div class="mt-2 flex items-center gap-2">
-                    <input type="checkbox" id="useQueueToggle" v-model="useQueue" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                    <label for="useQueueToggle" class="text-xs text-gray-600">Use Queue Processing (Experimental)</label>
-                </div>
-            </div>
-        </div>
-
-        <!-- Main Content View (after folder selection) -->
-        <div v-else class="container mx-auto px-4 py-6">
-            <!-- Modified search section (removed duplicate title) -->
-            <div class="mb-8">
-                <div class="max-w-4xl mx-auto">
+        <!-- Main Content View - Always Visible -->
+        <div class="w-full px-6 py-6">
+            <!-- Only show search when a directory is selected -->
+            <div v-if="currentDirectory" class="mb-8">
+                <div class="w-full max-w-6xl mx-auto">
                     <div class="relative flex gap-2">
                         <div class="relative flex-1">
                             <input type="text" 
@@ -220,157 +149,368 @@
                     </button>
                 </div>
             </div>
-
-            <!-- Image Grid -->
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                <div v-for="image in images" 
-                     :key="image.path"
-                     @click="openImageModal(image)"
-                     class="relative group cursor-pointer">
-                    <!-- Image container with status indicator via border color -->
-                    <div class="aspect-square overflow-hidden rounded-lg bg-gray-100"
-                         :class="{
-                             'ring-2 ring-green-500': Boolean(image.is_processed),
-                             'ring-2 ring-orange-500': !Boolean(image.is_processed)
-                         }">
-                        <img :src="image.url" 
-                             :alt="image.description"
-                             class="w-full h-full object-cover group-hover:opacity-75 transition-opacity">
-                    </div>
-                    <!-- Optional status indicator that can be enabled via app settings -->
-                    <div v-if="appSettings?.showProcessingStatus" 
-                         class="absolute top-0 right-0 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
-                        {{ image.is_processed ? '✓' : '✗' }}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Image statistics summary - useful for both users and debugging -->
-            <div class="mt-4 text-xs text-gray-500 text-center">
-                <p>Showing {{ images.length }} images 
-                   <span v-if="appSettings?.showProcessingStatus">
-                   (Processed: {{ images.filter(img => img.is_processed).length }},
-                   Unprocessed: {{ images.filter(img => !img.is_processed).length }})
-                   </span>
-                </p>
-            </div>
-        </div>
-
-        <!-- Image Modal -->
-        <div v-if="selectedImage" 
-             class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4"
-             @click="selectedImage = null">
-            <div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden" 
-                 @click.stop>
-                <div class="p-4 flex justify-between items-center border-b">
-                    <h3 class="text-lg font-medium">Image Details</h3>
-                    <button @click="selectedImage = null" 
-                            class="text-gray-400 hover:text-gray-500">
-                        ✕
-                    </button>
-                </div>
-                <div class="p-4 flex gap-4">
-                    <div class="flex-1 flex items-center justify-center">
-                        <img :src="selectedImage.url" 
-                             :alt="selectedImage.description"
-                             class="max-w-full max-h-[70vh] w-auto h-auto object-contain rounded-lg">
-                    </div>
-                    <div class="w-80 space-y-4 overflow-y-auto max-h-[70vh]">
-                        <button v-if="!isProcessed"
-                                @click="processImage(selectedImage)"
-                                :disabled="selectedImage.processing"
-                                class="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed">
-                            {{ selectedImage.processing ? 'Processing...' : 'Process Image' }}
-                        </button>
-                        
-                        <!-- Add progress bar when processing -->
-                        <div v-if="selectedImage.processing" class="mt-2">
-                            <div class="w-full bg-gray-200 rounded-full h-2">
-                                <div class="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                     :style="{ width: `${selectedImage.progress * 100}%` }">
-                                </div>
-                            </div>
-                            <p class="text-sm text-gray-600 text-center mt-1">
-                                {{ Math.round(selectedImage.progress * 100) }}% Complete
-                            </p>
-                        </div>
-
-                        <div>
-                            <h4 class="font-medium mb-2">Image Path</h4>
-                            <p class="text-sm text-gray-600 break-all font-mono">
-                                {{ selectedImage.path }}
-                            </p>
-                        </div>
-                        
-                        <div>
-                            <h4 class="font-medium mb-2">Description</h4>
-                            <textarea
-                                v-model="selectedImage.description"
-                                class="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                rows="3"
-                                placeholder="Enter description..."
-                            ></textarea>
-                        </div>
-                        
-                        <div>
-                            <h4 class="font-medium mb-2">Tags</h4>
-                            <div class="space-y-2">
-                                <div class="flex flex-wrap gap-2">
-                                    <span v-for="(tag, index) in selectedImage.tags" 
-                                          :key="index"
-                                          class="px-2 py-1 text-sm bg-gray-100 rounded-md text-gray-700 flex items-center gap-1">
-                                        {{ tag }}
-                                        <button @click="removeTag(index)" 
-                                                class="text-gray-500 hover:text-red-500">×</button>
-                                    </span>
-                                </div>
-                                <div class="flex gap-2">
-                                    <input
-                                        v-model="newTag"
-                                        @keyup.enter="addTag"
-                                        type="text"
-                                        class="flex-1 px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="Add new tag..."
-                                    >
-                                    <button @click="addTag"
-                                            class="px-3 py-1 text-sm bg-gray-200 rounded-md hover:bg-gray-300">
-                                        Add
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <h4 class="font-medium mb-2">Text in Image</h4>
-                            <textarea
-                                v-model="selectedImage.text_content"
-                                class="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                rows="3"
-                                placeholder="Enter text content..."
-                            ></textarea>
-                        </div>
-                        
-                        <div class="flex gap-2">
-                            <button @click="saveMetadata"
-                                    :disabled="saving"
-                                    class="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-green-300">
-                                {{ saving ? 'Saving...' : 'Save Changes' }}
-                            </button>
-                            <button @click="resetChanges"
-                                    class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500">
-                                Reset
-                            </button>
+            
+            <!-- Master-Detail Layout -->
+            <div class="flex gap-6 w-full">
+                <!-- Use the Directory Browser component -->
+                <directory-browser
+                    :directories="directories"
+                    :loading="loadingDirectories"
+                    :error="directoryError"
+                    :current-directory="currentDirectory"
+                    @refresh="loadDirectories"
+                    @navigate-up="navigateUp"
+                    @select-directory="selectDirectory"
+                    @initialize-vector-store="initializeVectorStore"
+                ></directory-browser>
+                
+                <!-- Main Content Area (2/3 width) -->
+                <div class="w-2/3 flex-1">
+                    <!-- No directory selected message -->
+                    <div v-if="!currentDirectory" class="h-full flex items-center justify-center text-gray-500">
+                        <div class="text-center">
+                            <div class="text-5xl mb-4">📁</div>
+                            <p class="text-xl">Select a directory in the navigation tree to start</p>
                         </div>
                     </div>
+                    
+                    <!-- Image Grid Component when directory is selected -->
+                    <image-grid 
+                        v-else
+                        :images="images" 
+                        :app-settings="appSettings"
+                        @open-image-modal="openImageModal"
+                    ></image-grid>
                 </div>
             </div>
         </div>
+
+        <!-- Image modal component -->
+        <image-modal
+            v-if="selectedImage"
+            :image="selectedImage"
+            :is-processed="isProcessed"
+            :saving="saving"
+            :new-tag="newTag"
+            @close="selectedImage = null"
+            @process-image="processImage"
+            @save-metadata="saveMetadata"
+            @reset-changes="resetChanges"
+            @add-tag="addTag"
+            @remove-tag="removeTag"
+            @update:new-tag="newTag = $event"
+        ></image-modal>
     </div>
 
     <script>
         const { createApp, ref, computed, onMounted, watch } = Vue
 
-        createApp({
+        // Notification Component
+        const NotificationSystem = {
+            props: {
+                notifications: Array
+            },
+            emits: ['dismiss'],
+            template: `
+                <div class="fixed top-4 right-4 z-50 flex flex-col gap-2">
+                    <transition-group name="notification">
+                        <div v-for="notification in notifications" :key="notification.id"
+                            class="max-w-md p-4 rounded-lg shadow-lg flex items-start gap-3"
+                            :class="{
+                                'bg-red-50 border-l-4 border-red-500': notification.type === 'error',
+                                'bg-yellow-50 border-l-4 border-yellow-500': notification.type === 'warning',
+                                'bg-green-50 border-l-4 border-green-500': notification.type === 'success',
+                                'bg-blue-50 border-l-4 border-blue-500': notification.type === 'info'
+                            }">
+                            <div class="flex-shrink-0">
+                                <div v-if="notification.type === 'error'" class="text-red-500">❌</div>
+                                <div v-if="notification.type === 'warning'" class="text-yellow-500">⚠️</div>
+                                <div v-if="notification.type === 'success'" class="text-green-500">✅</div>
+                                <div v-if="notification.type === 'info'" class="text-blue-500">ℹ️</div>
+                            </div>
+                            <div class="flex-1 pr-4">
+                                <p class="font-semibold" :class="{
+                                    'text-red-700': notification.type === 'error',
+                                    'text-yellow-700': notification.type === 'warning',
+                                    'text-green-700': notification.type === 'success',
+                                    'text-blue-700': notification.type === 'info'
+                                }">{{ notification.title }}</p>
+                                <p class="text-sm" :class="{
+                                    'text-red-600': notification.type === 'error',
+                                    'text-yellow-600': notification.type === 'warning',
+                                    'text-green-600': notification.type === 'success',
+                                    'text-blue-600': notification.type === 'info'
+                                }">{{ notification.message }}</p>
+                            </div>
+                            <button @click="$emit('dismiss', notification.id)" class="text-gray-500 hover:text-gray-700">
+                                <span>×</span>
+                            </button>
+                        </div>
+                    </transition-group>
+                </div>
+            `
+        };
+
+        // Directory Browser Component
+        const DirectoryBrowser = {
+            props: {
+                directories: Array,
+                loading: Boolean,
+                error: String,
+                currentDirectory: String
+            },
+            emits: ['refresh', 'navigate-up', 'select-directory', 'initialize-vector-store'],
+            template: `
+                <div class="w-1/3 min-w-64 border rounded-lg bg-white shadow-sm overflow-hidden flex flex-col">
+                    <div class="p-3 border-b bg-gray-50 flex justify-between items-center">
+                        <h3 class="text-sm font-medium text-gray-700">Directories</h3>
+                        <div class="flex gap-2">
+                            <button @click="$emit('navigate-up')" 
+                                    :disabled="loading"
+                                    class="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded flex items-center gap-1">
+                                <span>↑</span> Up
+                            </button>
+                            <button @click="$emit('refresh')" 
+                                    :disabled="loading"
+                                    class="text-xs px-2 py-1 text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                                <span>↻</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Current directory actions: show only when a directory is selected -->
+                    <div v-if="currentDirectory" class="p-2 border-b bg-gray-50 flex justify-between items-center">
+                        <div class="text-xs text-gray-600 truncate flex-1">
+                            <span class="font-medium">Current:</span> 
+                            <span>{{ currentDirectory.split('/').pop() }}</span>
+                        </div>
+                        <button @click="$emit('initialize-vector-store')"
+                                class="text-xs px-2 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded">
+                            Initialize Vector Store
+                        </button>
+                    </div>
+                    
+                    <div class="flex-1 overflow-y-auto p-2 max-h-[70vh]">
+                        <!-- Loading state -->
+                        <div v-if="loading" class="flex items-center justify-center h-full">
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                <p class="text-sm text-gray-500">Loading directories...</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Error state -->
+                        <div v-else-if="error" class="text-center p-4 text-red-500">
+                            <p>{{ error }}</p>
+                            <button @click="$emit('refresh')" class="mt-2 text-sm text-blue-600 hover:underline">
+                                Try Again
+                            </button>
+                        </div>
+                        
+                        <!-- Empty state -->
+                        <div v-else-if="directories.length === 0" class="text-center p-4 text-gray-500">
+                            <p>No directories found</p>
+                        </div>
+                        
+                        <!-- Directory list -->
+                        <div v-else class="space-y-1">
+                            <div v-for="dir in directories" 
+                                :key="dir.path"
+                                @click="$emit('select-directory', dir.path)"
+                                class="flex items-center p-2 rounded-md cursor-pointer hover:bg-gray-100"
+                                :class="{'bg-blue-50': dir.path === currentDirectory}">
+                                <div class="mr-2 text-gray-500">
+                                    <!-- Show different icons based on directory type -->
+                                    <span v-if="dir.type === 'home'" class="text-blue-500">🏠</span>
+                                    <span v-else-if="dir.type === 'volume'" class="text-green-500">💾</span>
+                                    <span v-else-if="dir.type === 'documents'" class="text-yellow-500">📄</span>
+                                    <span v-else-if="dir.type === 'desktop'" class="text-purple-500">🖥️</span>
+                                    <span v-else-if="dir.type === 'downloads'" class="text-red-500">⬇️</span>
+                                    <span v-else-if="dir.hasImages" class="text-blue-500">📁</span>
+                                    <span v-else>📁</span>
+                                </div>
+                                <div class="flex-1 truncate">
+                                    <span class="text-sm">{{ dir.name }}</span>
+                                </div>
+                                <div v-if="dir.imageCount && dir.imageCount > 0" class="text-xs bg-gray-200 rounded-full px-2 py-0.5 text-gray-700">
+                                    {{ dir.imageCount }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        // Image Grid Component
+        const ImageGrid = {
+            props: {
+                images: Array,
+                appSettings: Object
+            },
+            emits: ['open-image-modal'],
+            template: `
+                <div>
+                    <!-- Image Grid -->
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <div v-for="image in images" 
+                            :key="image.path"
+                            @click="$emit('open-image-modal', image)"
+                            class="relative group cursor-pointer">
+                            <!-- Image container with status indicator via border color -->
+                            <div class="aspect-square overflow-hidden rounded-lg bg-gray-100"
+                                :class="{
+                                    'ring-2 ring-green-500': Boolean(image.is_processed),
+                                    'ring-2 ring-orange-500': !Boolean(image.is_processed)
+                                }">
+                                <img :src="image.url" 
+                                    :alt="image.description"
+                                    class="w-full h-full object-cover group-hover:opacity-75 transition-opacity">
+                            </div>
+                            <!-- Optional status indicator that can be enabled via app settings -->
+                            <div v-if="appSettings?.showProcessingStatus" 
+                                class="absolute top-0 right-0 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                                {{ image.is_processed ? '✓' : '✗' }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Image statistics summary - useful for both users and debugging -->
+                    <div class="mt-4 text-xs text-gray-500 text-center">
+                        <p>Showing {{ images.length }} images 
+                        <span v-if="appSettings?.showProcessingStatus">
+                        (Processed: {{ images.filter(img => img.is_processed).length }},
+                        Unprocessed: {{ images.filter(img => !img.is_processed).length }})
+                        </span>
+                        </p>
+                    </div>
+                </div>
+            `
+        };
+
+        // Image Modal Component
+        const ImageModal = {
+            props: {
+                image: Object,
+                isProcessed: Boolean,
+                saving: Boolean,
+                newTag: String
+            },
+            emits: ['close', 'process-image', 'save-metadata', 'reset-changes', 'add-tag', 'remove-tag', 'update:newTag'],
+            template: `
+                <div class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4"
+                     @click="$emit('close')">
+                    <div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden" 
+                         @click.stop>
+                        <div class="p-4 flex justify-between items-center border-b">
+                            <h3 class="text-lg font-medium">Image Details</h3>
+                            <button @click="$emit('close')" 
+                                    class="text-gray-400 hover:text-gray-500">
+                                ✕
+                            </button>
+                        </div>
+                        <div class="p-4 flex gap-4">
+                            <div class="flex-1 flex items-center justify-center">
+                                <img :src="image.url" 
+                                     :alt="image.description"
+                                     class="max-w-full max-h-[70vh] w-auto h-auto object-contain rounded-lg">
+                            </div>
+                            <div class="w-80 space-y-4 overflow-y-auto max-h-[70vh]">
+                                <button v-if="!isProcessed"
+                                        @click="$emit('process-image', image)"
+                                        :disabled="image.processing"
+                                        class="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed">
+                                    {{ image.processing ? 'Processing...' : 'Process Image' }}
+                                </button>
+                                
+                                <!-- Add progress bar when processing -->
+                                <div v-if="image.processing" class="mt-2">
+                                    <div class="w-full bg-gray-200 rounded-full h-2">
+                                        <div class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                             :style="{ width: \`\${image.progress * 100}%\` }">
+                                        </div>
+                                    </div>
+                                    <p class="text-sm text-gray-600 text-center mt-1">
+                                        {{ Math.round(image.progress * 100) }}% Complete
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <h4 class="font-medium mb-2">Image Path</h4>
+                                    <p class="text-sm text-gray-600 break-all font-mono">
+                                        {{ image.path }}
+                                    </p>
+                                </div>
+                                
+                                <div>
+                                    <h4 class="font-medium mb-2">Description</h4>
+                                    <textarea
+                                        v-model="image.description"
+                                        class="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        rows="3"
+                                        placeholder="Enter description..."
+                                    ></textarea>
+                                </div>
+                                
+                                <div>
+                                    <h4 class="font-medium mb-2">Tags</h4>
+                                    <div class="space-y-2">
+                                        <div class="flex flex-wrap gap-2">
+                                            <span v-for="(tag, index) in image.tags" 
+                                                  :key="index"
+                                                  class="px-2 py-1 text-sm bg-gray-100 rounded-md text-gray-700 flex items-center gap-1">
+                                                {{ tag }}
+                                                <button @click="$emit('remove-tag', index)" 
+                                                        class="text-gray-500 hover:text-red-500">×</button>
+                                            </span>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <input
+                                                :value="newTag"
+                                                @input="$emit('update:newTag', $event.target.value)"
+                                                @keyup.enter="$emit('add-tag')"
+                                                type="text"
+                                                class="flex-1 px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                placeholder="Add new tag..."
+                                            >
+                                            <button @click="$emit('add-tag')"
+                                                    class="px-3 py-1 text-sm bg-gray-200 rounded-md hover:bg-gray-300">
+                                                Add
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <h4 class="font-medium mb-2">Text in Image</h4>
+                                    <textarea
+                                        v-model="image.text_content"
+                                        class="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        rows="3"
+                                        placeholder="Enter text content..."
+                                    ></textarea>
+                                </div>
+                                
+                                <div class="flex gap-2">
+                                    <button @click="$emit('save-metadata')"
+                                            :disabled="saving"
+                                            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-green-300">
+                                        {{ saving ? 'Saving...' : 'Save Changes' }}
+                                    </button>
+                                    <button @click="$emit('reset-changes')"
+                                            class="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                                        Reset
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        // Main application
+        const app = createApp({
             setup() {
                 const images = ref([])
                 const searchQuery = ref('')
@@ -393,84 +533,244 @@
                 const confirmMessage = ref('')
                 const queueStatus = ref(null)
                 
+                // New variables for directory browser
+                const directories = ref([])
+                const loadingDirectories = ref(false)
+                const directoryError = ref(null)
+                const currentDirectory = ref('')
+                const isRootLevel = ref(true) // Track if we're at the root level
+                
+                // App settings (can be expanded later)
+                const appSettings = ref({
+                    showProcessingStatus: true
+                });
+                
                 // Notification system
                 const notifications = ref([]);
                 let notificationIdCounter = 0;
                 
-                // Notification helper functions
                 const showNotification = (type, title, message, duration = 5000) => {
                     const id = notificationIdCounter++;
-                    const notification = { id, type, title, message };
-                    notifications.value.push(notification);
+                    notifications.value.push({ id, type, title, message });
                     
-                    // Auto-dismiss after duration (unless it's 0, which means don't auto-dismiss)
-                    if (duration > 0) {
-                        setTimeout(() => {
-                            // Don't log button click for auto-dismiss
-                            const index = notifications.value.findIndex(n => n.id === id);
-                            if (index !== -1) {
-                                notifications.value.splice(index, 1);
-                            }
-                        }, duration);
-                    }
-                    
-                    return id;
+                    // Auto-dismiss after duration
+                    setTimeout(() => {
+                        dismissNotification(id);
+                    }, duration);
                 };
                 
-                const dismissNotification = async (id) => {
-                    // Only log button click for manual dismissal
-                    await logButtonClick('Dismiss Notification', { id });
+                const dismissNotification = (id) => {
                     const index = notifications.value.findIndex(n => n.id === id);
                     if (index !== -1) {
                         notifications.value.splice(index, 1);
                     }
                 };
                 
-                // Convenience methods for different notification types
-                const showError = (title, message, duration = 8000) => {
-                    // Handle array of errors
-                    if (Array.isArray(message)) {
-                        message = message.map(err => {
-                            if (typeof err === 'string') return err;
-                            return err.message || err.detail || JSON.stringify(err);
-                        }).join(', ');
-                    }
-                    // Handle object errors
-                    else if (typeof message === 'object' && message !== null) {
-                        message = message.message || message.detail || JSON.stringify(message);
-                    }
-                    return showNotification('error', title, message, duration);
-                }
+                const showError = (title, message) => showNotification('error', title, message);
+                const showWarning = (title, message) => showNotification('warning', title, message);
+                const showSuccess = (title, message) => showNotification('success', title, message);
+                const showInfo = (title, message) => showNotification('info', title, message);
                 
-                const showWarning = (title, message, duration = 6000) => 
-                    showNotification('warning', title, message, duration);
-                
-                const showSuccess = (title, message, duration = 4000) => 
-                    showNotification('success', title, message, duration);
-                
-                const showInfo = (title, message, duration = 4000) => 
-                    showNotification('info', title, message, duration);
-                
-                // Single logToServer implementation
-                const logToServer = async (action, details) => {
+                // Log events to the server
+                const logToServer = async (level, data) => {
+                    // Always log to console for debugging
+                    console.log(`FRONTEND LOG [${level}]:`, data.message, data);
+                    
                     try {
-                        await fetch('/log-action', {
+                        // Try both possible endpoints
+                        const endpoint = '/log-action';
+                        console.log(`Sending log to ${endpoint}`);
+                        const response = await fetch(endpoint, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                action: action,
-                                ...details
-                            })
+                            body: JSON.stringify({ action: level, message: data.message, ...data })
                         });
+                        
+                        if (!response.ok) {
+                            console.warn(`Log request failed with status ${response.status}`);
+                        } else {
+                            console.log(`Log successfully sent to ${endpoint}`);
+                        }
                     } catch (err) {
-                        // If we can't log to server, there's not much we can do
+                        console.error('Logging error:', err);
                     }
-                }
-
-                // Standardize button click logging
-                const logButtonClick = async (button, details = {}) => {
-                    await logToServer('BUTTON_CLICK', { button, ...details });
-                }
+                };
+                
+                const logButtonClick = async (buttonName, data = {}) => {
+                    console.log(`FRONTEND BUTTON CLICK: ${buttonName}`);
+                    await logToServer('INFO', { 
+                        message: `FRONTEND BUTTON CLICK: ${buttonName}`,
+                        button: buttonName,
+                        ...data
+                    });
+                };
+                
+                // Load root directories on startup
+                const loadRootDirectories = async () => {
+                    loadingDirectories.value = true;
+                    directoryError.value = null;
+                    isRootLevel.value = true;
+                    
+                    try {
+                        const response = await fetch('/root-directories');
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to load root directories');
+                        }
+                        
+                        const data = await response.json();
+                        directories.value = data.directories;
+                        
+                        if (directories.value.length === 0) {
+                            showWarning('No Directories', 'No root directories found');
+                        }
+                    } catch (err) {
+                        await logToServer('ERROR', { message: `Error loading root directories: ${err.message}` });
+                        directoryError.value = err.message;
+                        showError('Directory Error', `Failed to load root directories: ${err.message}`);
+                    } finally {
+                        loadingDirectories.value = false;
+                    }
+                };
+                
+                // Load subdirectories within a directory
+                const loadDirectories = async () => {
+                    if (!currentDirectory.value && !isRootLevel.value) {
+                        // If we're not at the root level and no current directory, load root directories
+                        await loadRootDirectories();
+                        return;
+                    }
+                    
+                    if (isRootLevel.value) {
+                        // If we're at the root level, just reload root directories
+                        await loadRootDirectories();
+                        return;
+                    }
+                    
+                    await logButtonClick('Load Directories');
+                    loadingDirectories.value = true;
+                    directoryError.value = null;
+                    
+                    try {
+                        const response = await fetch('/directories?path=' + encodeURIComponent(currentDirectory.value));
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to load directories');
+                        }
+                        
+                        const data = await response.json();
+                        directories.value = data.directories;
+                        
+                        if (directories.value.length === 0) {
+                            showInfo('No Directories', 'No subdirectories found in the current folder');
+                        }
+                    } catch (err) {
+                        await logToServer('ERROR', { message: `Error loading directories: ${err.message}` });
+                        directoryError.value = err.message;
+                        showError('Directory Error', `Failed to load directories: ${err.message}`);
+                    } finally {
+                        loadingDirectories.value = false;
+                    }
+                };
+                
+                // Select a directory and load its contents
+                const selectDirectory = async (dirPath, skipVectorStore = true) => {
+                    await logButtonClick('Select Directory', { 
+                        path: dirPath, 
+                        skipVectorStore: skipVectorStore 
+                    });
+                    isLoading.value = true;
+                    loadingStatus.value = 'Loading directory...';
+                    
+                    try {
+                        await logToServer('DIRECTORY', { 
+                            message: `Selecting directory: ${dirPath}`,
+                            skipVectorStore: skipVectorStore
+                        });
+                        
+                        // Add skip_vector_store as a query parameter
+                        const queryParam = skipVectorStore ? '?skip_vector_store=true' : '';
+                        
+                        const response = await fetch(`/images${queryParam}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ folder_path: dirPath })
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to open directory');
+                        }
+                        
+                        const data = await response.json();
+                        images.value = data.images;
+                        currentDirectory.value = dirPath;
+                        folderOpened.value = true;
+                        isRootLevel.value = false;
+                        
+                        await logToServer('DIRECTORY', { 
+                            message: `Directory selected: ${dirPath}`,
+                            imageCount: data.images.length,
+                            processedCount: data.images.filter(img => img.is_processed).length
+                        });
+                        
+                        // After selecting a directory, load its subdirectories
+                        await loadDirectories();
+                        
+                        showSuccess('Directory Opened', `Found ${images.value.length} images`);
+                    } catch (err) {
+                        await logToServer('ERROR', { message: `Error selecting directory: ${err.message}` });
+                        showError('Error Opening Directory', err.message);
+                    } finally {
+                        isLoading.value = false;
+                        loadingStatus.value = '';
+                    }
+                };
+                
+                // Navigate to parent directory
+                const navigateUp = async () => {
+                    await logButtonClick('Navigate Up');
+                    
+                    if (isRootLevel.value) {
+                        // Already at root level, nothing to do
+                        showInfo('Navigation', 'Already at root level');
+                        return;
+                    }
+                    
+                    if (!currentDirectory.value) {
+                        // If no current directory but not at root level, go to root
+                        isRootLevel.value = true;
+                        await loadRootDirectories();
+                        return;
+                    }
+                    
+                    // Get parent path
+                    const path = new URL('file://' + currentDirectory.value);
+                    const pathParts = path.pathname.split('/');
+                    pathParts.pop(); // Remove last part
+                    
+                    if (pathParts.length <= 1) {
+                        // We'd be at root level
+                        isRootLevel.value = true;
+                        currentDirectory.value = '';
+                        await loadRootDirectories();
+                        showInfo('Navigation', 'Returned to root level');
+                        return;
+                    }
+                    
+                    const parentPath = pathParts.join('/');
+                    
+                    if (parentPath) {
+                        await selectDirectory(parentPath, true); // Skip vector store when navigating
+                    } else {
+                        isRootLevel.value = true;
+                        await loadRootDirectories();
+                    }
+                };
 
                 const openFolder = async () => {
                     if (!folderPath.value) {
@@ -478,11 +778,19 @@
                         return;
                     }
 
-                    await logButtonClick('Open Folder', { path: folderPath.value });
+                    await logButtonClick('Open Folder', { 
+                        path: folderPath.value,
+                        skipVectorStore: false // Always initialize vector store when explicitly opening a folder
+                    });
                     isLoading.value = true;
                     loadingStatus.value = 'Opening folder...';
                     
                     try {
+                        await logToServer('FOLDER', { 
+                            message: `Opening folder with vector store: ${folderPath.value}`
+                        });
+                        
+                        // Don't add query param to initialize vector store
                         const response = await fetch('/images', {
                             method: 'POST',
                             headers: {
@@ -499,13 +807,26 @@
                         const data = await response.json();
                         images.value = data.images;
                         folderOpened.value = true;
+                        currentDirectory.value = folderPath.value;
+                        isRootLevel.value = false;
+                        
+                        await logToServer('FOLDER', { 
+                            message: `Folder opened with vector store: ${folderPath.value}`,
+                            imageCount: data.images.length,
+                            processedCount: data.images.filter(img => img.is_processed).length
+                        });
+                        
                         showSuccess('Folder Opened', `Found ${images.value.length} images`);
                         
                         // Initialize queue status if using queue
                         if (useQueue.value) {
                             await refreshQueueStatus();
                         }
+                        
+                        // After opening a folder, also load its subdirectories
+                        await loadDirectories();
                     } catch (err) {
+                        await logToServer('ERROR', { message: `Error opening folder: ${err.message}` });
                         showError('Error Opening Folder', err.message);
                     } finally {
                         isLoading.value = false;
@@ -1021,7 +1342,7 @@
                         showError('Queue Error', `Failed to stop processing: ${err.message}`);
                     }
                 }
-                
+
                 // Watch for changes to useQueue and refresh queue status when enabled
                 watch(useQueue, async (newValue) => {
                     if (newValue) {
@@ -1029,8 +1350,11 @@
                     }
                 });
                 
-                // Refresh queue status periodically when enabled
+                // Refresh queue status periodically and load root directories when component is mounted
                 onMounted(() => {
+                    // Load root directories on startup
+                    loadRootDirectories();
+                    
                     if (useQueue.value) {
                         refreshQueueStatus();
                     }
@@ -1046,47 +1370,122 @@
                     return () => clearInterval(interval);
                 });
 
+                // Initialize vector store for current directory
+                const initializeVectorStore = async () => {
+                    await logButtonClick('Initialize Vector Store', {
+                        directory: currentDirectory.value
+                    });
+                    isLoading.value = true;
+                    loadingStatus.value = 'Initializing vector store...';
+                    
+                    try {
+                        await logToServer('VECTOR_STORE', { 
+                            message: `Initializing vector store for directory: ${currentDirectory.value}`
+                        });
+                        
+                        // Don't use query param to ensure vector store is initialized
+                        const response = await fetch('/images', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ folder_path: currentDirectory.value })
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to initialize vector store');
+                        }
+                        
+                        const data = await response.json();
+                        images.value = data.images;
+                        folderOpened.value = true;
+                        
+                        await logToServer('VECTOR_STORE', { 
+                            message: `Vector store initialized for directory: ${currentDirectory.value}`,
+                            imageCount: data.images.length,
+                            processedCount: data.images.filter(img => img.is_processed).length
+                        });
+                        
+                        showSuccess('Vector Store Initialized', 'Vector store successfully initialized');
+                    } catch (err) {
+                        await logToServer('ERROR', { message: `Error initializing vector store: ${err.message}` });
+                        showError('Error Initializing Vector Store', err.message);
+                    } finally {
+                        isLoading.value = false;
+                        loadingStatus.value = '';
+                    }
+                };
+
                 return {
-                    images,
-                    searchQuery,
-                    selectedImage,
                     folderPath,
-                    openFolder,
-                    openImageModal,
-                    searchImages,
-                    refreshImages,
-                    processImage,
-                    processingAll,
+                    searchQuery,
+                    images,
+                    isLoading,
+                    loadingStatus,
+                    selectedImage,
+                    originalImageData,
+                    saving,
                     currentImageName,
+                    processingAll,
                     processedCount,
                     totalToProcess,
                     failedImages,
-                    progressPercentage,
-                    processAllImages,
                     newTag,
-                    saving,
+                    folderOpened,
+                    notifications,
+                    notificationCount: computed(() => notifications.value.length),
+                    isProcessed: computed(() => selectedImage.value?.is_processed || false),
+                    useQueue,
+                    queueStatus,
+                    progressPercentage,
+                    directories,
+                    loadingDirectories,
+                    directoryError,
+                    currentDirectory,
+                    isRootLevel,
+                    appSettings,
+                    // Methods
+                    openFolder,
+                    searchImages,
+                    refreshImages,
+                    processImage,
+                    processAllImages,
+                    stopProcessing: processAllImages,
+                    resetProcessingState: processAllImages,
                     saveMetadata,
                     resetChanges,
                     addTag,
                     removeTag,
-                    isProcessed,
-                    folderOpened,
-                    isLoading,
-                    loadingStatus,
-                    useQueue,
-                    showConfirmDialog,
-                    confirmAction,
-                    confirmMessage,
-                    notifications,
-                    dismissNotification,
+                    openImageModal,
+                    showSuccess,
                     showError,
                     showWarning,
-                    showSuccess,
                     showInfo,
-                    queueStatus
+                    dismissNotification,
+                    clearNotifications: dismissNotification,
+                    setupQueueProcessor: processAllImages,
+                    clearQueue,
+                    startQueueProcessing,
+                    stopQueueProcessing,
+                    refreshQueueStatus,
+                    loadDirectories,
+                    loadRootDirectories,
+                    selectDirectory,
+                    navigateUp,
+                    initializeVectorStore
                 }
             }
-        }).mount('#app')
+        })
+
+        // Register components with the app
+        app.component('notification-system', NotificationSystem)
+        app.component('directory-browser', DirectoryBrowser)
+        app.component('image-grid', ImageGrid)
+        app.component('image-modal', ImageModal)
+
+        // Mount the app
+        app.mount('#app')
     </script>
 </body>
 </html>

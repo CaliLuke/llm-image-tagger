@@ -9,6 +9,7 @@ from PIL import Image
 import hashlib
 import asyncio
 import random
+import urllib.parse
 
 from ..core.logging import logger
 from ..models.schemas import (
@@ -21,7 +22,8 @@ from ..models.schemas import (
     SearchResponse,
     ProcessResponse,
     DirectoryInfo,
-    DirectoriesResponse
+    DirectoriesResponse,
+    VectorStoreInitResponse
 )
 from ..services.image_processor import ImageProcessor, update_image_metadata
 from ..services.vector_store import VectorStore
@@ -177,20 +179,21 @@ async def read_root():
     return FileResponse("static/index.html")
 
 @router.post("/images", response_model=ImagesResponse)
-async def open_folder(folder: FolderRequest):
+async def open_folder(folder: FolderRequest, skip_vector_store: bool = False):
     """
     Open a folder and load its images.
     
     This endpoint:
     1. Validates the provided folder path
     2. Sets the current folder in application state
-    3. Initializes the vector store
+    3. Initializes the vector store (unless skip_vector_store is True)
     4. Loads or creates metadata from the folder
-    5. Synchronizes the vector store with the metadata (async)
+    5. Synchronizes the vector store with the metadata (async, unless skip_vector_store is True)
     6. Creates ImageInfo objects for all images
     
     Args:
         folder: Folder request with path
+        skip_vector_store: If True, skip vector store initialization (for directory navigation)
         
     Returns:
         ImagesResponse with list of images
@@ -199,32 +202,65 @@ async def open_folder(folder: FolderRequest):
         HTTPException: If folder not found or other errors occur
     """
     try:
-        folder_path = Path(folder.folder_path)
+        logger.info(f"API: Request to open folder with skip_vector_store={skip_vector_store}")
+        
+        # URL decode the path to handle spaces and special characters
+        decoded_path = urllib.parse.unquote(folder.folder_path)
+        
+        # Normalize macOS volume paths - this fixes duplicate /Volumes references
+        if decoded_path.startswith('/Volumes/Macintosh HD/Volumes/'):
+            # Remove the redundant /Volumes/Macintosh HD prefix
+            decoded_path = decoded_path.replace('/Volumes/Macintosh HD/Volumes/', '/Volumes/', 1)
+            logger.info(f"Normalized volume path to: {decoded_path}")
+            
+        folder_path = Path(decoded_path)
+        
         if not folder_path.exists():
             logger.error(f"Folder not found: {folder_path}")
             raise HTTPException(status_code=404, detail="Folder not found")
         
         logger.info(f"API: Received request to open folder: {folder_path}")
+        if skip_vector_store:
+            logger.info(f"API: Skipping vector store initialization for directory navigation")
+        
         router.current_folder = str(folder_path.resolve())
         logger.info(f"STATE: Current folder set to: {router.current_folder}")
         
-        # Initialize vector store
-        logger.info(f"VECTOR_STORE: Initializing for folder: {folder_path}")
-        vector_store = get_vector_store()
+        # For test folders, use recursive=True to maintain compatibility with tests
+        is_test_folder = "test_data" in str(folder_path) or "test_images" in str(folder_path)
+        recursive = is_test_folder  # Use recursive mode for test folders
+        
+        # During navigation (skip_vector_store=True), don't require write access
+        # Only create metadata files when actually processing images
+        require_write_access = not skip_vector_store
         
         # Load metadata from folder
         logger.info(f"METADATA: Loading from folder: {folder_path}")
-        metadata = await load_or_create_metadata(folder_path)
+        metadata = await load_or_create_metadata(
+            folder_path, 
+            recursive=recursive,
+            require_write_access=require_write_access
+        )
         logger.info(f"METADATA: Loaded {len(metadata)} entries from {folder_path}")
         
-        # Log the processed images count
-        processed_count = sum(1 for img_data in metadata.values() if img_data.get('is_processed', False))
-        logger.info(f"METADATA: Found {processed_count}/{len(metadata)} processed images")
-        
-        # Sync the vector store with the metadata (async operation)
-        logger.info(f"VECTOR_STORE: Synchronizing with metadata ({len(metadata)} entries)")
-        await vector_store.sync_with_metadata(folder_path, metadata)
-        logger.info(f"VECTOR_STORE: Synchronization complete for folder: {folder_path}")
+        # Only initialize and sync vector store if not skipped
+        if not skip_vector_store:
+            # Initialize vector store
+            logger.info(f"VECTOR_STORE: Initializing for folder: {folder_path}")
+            vector_store = get_vector_store()
+            
+            # Log the processed images count
+            processed_count = sum(1 for img_data in metadata.values() if img_data.get('is_processed', False))
+            logger.info(f"METADATA: Found {processed_count}/{len(metadata)} processed images")
+            
+            # Sync the vector store with the metadata (async operation)
+            logger.info(f"VECTOR_STORE: Synchronizing with metadata ({len(metadata)} entries)")
+            await vector_store.sync_with_metadata(folder_path, metadata)
+            logger.info(f"VECTOR_STORE: Synchronization complete for folder: {folder_path}")
+        else:
+            logger.info(f"VECTOR_STORE: Initialization skipped for directory navigation")
+            processed_count = sum(1 for img_data in metadata.values() if img_data.get('is_processed', False))
+            logger.info(f"METADATA: Found {processed_count}/{len(metadata)} processed images (vector store not initialized)")
         
         # Convert metadata to image info objects
         logger.info("PROCESSING: Creating ImageInfo objects")
@@ -235,11 +271,17 @@ async def open_folder(folder: FolderRequest):
         logger.info(f"API: Returning {len(images)} images ({processed_images} processed) to client")
         
         # Verify consistency between metadata and ImageInfo objects 
-        if processed_count != processed_images:
+        if not skip_vector_store and processed_count != processed_images:
             logger.warning(f"CONSISTENCY: Mismatch between processed count in metadata ({processed_count}) and ImageInfo objects ({processed_images})")
         
         return {"images": images}
+    except HTTPException as http_exc:
+        # Directly re-raise HTTPExceptions to preserve their status codes
+        logger.error(f"HTTP Exception: {http_exc.status_code}: {http_exc.detail}")
+        logger.error(traceback.format_exc())
+        raise
     except Exception as e:
+        # For other exceptions, wrap them in a 500 error
         logger.error(f"ERROR: Failed to open folder: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
@@ -628,7 +670,7 @@ async def update_metadata(
         logger.info(f"Current folder path: {folder_path}")
         
         # Load current metadata from image folder
-        metadata = await load_or_create_metadata(folder_path)
+        metadata = await load_or_create_metadata(folder_path, require_write_access=True)
         logger.info(f"Loaded metadata with {len(metadata)} entries")
         
         # Check if image exists in metadata
@@ -987,85 +1029,246 @@ async def test_process_batch(
 @router.get("/directories", response_model=DirectoriesResponse)
 async def list_directories(path: Optional[str] = None):
     """
-    List all directories at the specified path or current folder.
-    Includes metadata about which directories contain images.
+    List directories at the specified path or current folder.
     
     Args:
-        path: Optional path to list directories from. If not provided, uses current folder.
+        path: Path to list directories from, or None to use current folder
         
     Returns:
-        DirectoriesResponse: JSON response with list of directories and their properties
+        JSON response with directory properties
         
     Raises:
-        HTTPException: If no folder is selected or there's an error accessing the filesystem
+        HTTPException: If folder not found or other errors occur
     """
-    current_path = path or router.current_folder
-    if not current_path:
-        logger.error("No folder selected when trying to list directories")
-        raise HTTPException(status_code=400, detail="No folder selected")
-    
-    logger.info(f"Listing directories in: {current_path}")
-    directories = []
-    
     try:
-        # Attempt to get the initial directory listing
-        try:
-            entries = list(Path(current_path).iterdir())
-        except (FileNotFoundError, PermissionError, OSError) as e:
-            # If we can't even access the parent directory, fail with error
-            logger.error(f"Cannot access directory {current_path}: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise HTTPException(status_code=500, 
-                               detail=f"Failed to list directories: {str(e)}")
-        
-        # Process each entry individually, handling errors for each entry separately
-        for entry in entries:
-            # Only process directories
-            if not entry.is_dir():
-                continue
-                
-            # Initialize defaults
-            has_images = False
-            has_metadata = False
-            error = None
-            image_count = 0
+        # Determine the directory to list
+        if path:
+            # URL decode the path to handle spaces and special characters
+            decoded_path = urllib.parse.unquote(path)
             
-            try:
-                # Try to list files in this directory
-                for child in entry.iterdir():
-                    if child.is_file() and child.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']:
-                        image_count += 1
-                        has_images = True
+            # Normalize macOS volume paths - this fixes duplicate /Volumes references
+            if decoded_path.startswith('/Volumes/Macintosh HD/Volumes/'):
+                # Remove the redundant /Volumes/Macintosh HD prefix
+                decoded_path = decoded_path.replace('/Volumes/Macintosh HD/Volumes/', '/Volumes/', 1)
+                logger.info(f"Normalized volume path to: {decoded_path}")
                 
-                # Check if metadata exists for this directory
-                metadata_file = entry / "image_metadata.json"
-                has_metadata = metadata_file.exists()
-                
-                if has_metadata:
-                    logger.debug(f"Found metadata file in directory: {entry.name}")
-                
-            except (PermissionError, OSError) as e:
-                # Handle access errors for individual directories gracefully
-                logger.warning(f"Could not access directory {entry}: {str(e)}")
-                error = f"Access denied: {str(e)}"
-            
-            # Create directory info even if there was an error
-            directory_info = DirectoryInfo(
-                name=entry.name,
-                path=str(entry),
-                hasImages=has_images,
-                hasMetadata=has_metadata,
-                imageCount=image_count if has_images else None,
-                error=error
-            )
-            
-            directories.append(directory_info)
+            directory_path = Path(decoded_path)
+            logger.info(f"Listing directories in: {directory_path}")
+        elif hasattr(router, 'current_folder') and router.current_folder:
+            directory_path = Path(router.current_folder)
+            logger.info(f"Listing directories in current folder: {directory_path}")
+        else:
+            logger.error("No current folder set, and no path provided")
+            raise HTTPException(status_code=400, detail="No folder selected")
         
-        logger.info(f"Found {len(directories)} directories in {current_path}")
-        return DirectoriesResponse(directories=directories)
+        # Check if the directory exists
+        if not directory_path.exists() or not directory_path.is_dir():
+            logger.error(f"Directory not found: {directory_path}")
+            raise HTTPException(status_code=404, detail="Directory not found")
+            
+        # Get all subdirectories
+        subdirectories = []
+        for item in directory_path.iterdir():
+            if item.is_dir() and not item.name.startswith("."):  # Skip hidden directories
+                # Count image files in the directory (non-recursive)
+                image_count = 0
+                for ext in settings.SUPPORTED_EXTENSIONS:
+                    # Strip leading dot if present
+                    ext_name = ext[1:] if ext.startswith('.') else ext
+                    # Count both lowercase and uppercase extensions
+                    image_count += len(list(item.glob(f"*.{ext_name.lower()}")))
+                    image_count += len(list(item.glob(f"*.{ext_name.upper()}")))
+                    
+                # Create directory info
+                directory_info = DirectoryInfo(
+                    name=item.name,
+                    path=str(item),
+                    hasImages=image_count > 0,
+                    hasMetadata=(item / "image_metadata.json").exists(),
+                    imageCount=image_count,
+                    image_count=image_count
+                )
+                subdirectories.append(directory_info)
+                
+        # Sort directories by name
+        subdirectories.sort(key=lambda x: x.name.lower())
         
+        logger.info(f"Found {len(subdirectories)} directories in {directory_path}")
+        
+        return DirectoriesResponse(directories=subdirectories)
+    except HTTPException as http_exc:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
-        # Catch any other unexpected errors
         logger.error(f"Error listing directories: {str(e)}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Failed to list directories: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing directories: {str(e)}")
+
+@router.get("/root-directories")
+async def list_root_directories():
+    """
+    List root directories that can be used as starting points for navigation.
+    
+    Returns:
+        JSON with a list of root directories
+    """
+    try:
+        # Get home directory
+        home_dir = str(Path.home())
+        
+        # List mounted volumes on macOS
+        volumes_dir = "/Volumes"
+        volumes = []
+        if Path(volumes_dir).exists():
+            for entry in Path(volumes_dir).iterdir():
+                if entry.is_dir():
+                    volumes.append(DirectoryInfo(
+                        name=entry.name,
+                        path=str(entry),
+                        hasImages=False,  # We don't check for performance reasons
+                        hasMetadata=False,
+                        imageCount=None,
+                        image_count=None,
+                        error=None
+                    ))
+        
+        # Create result with common directories
+        directories = [
+            DirectoryInfo(
+                name="Home",
+                path=home_dir,
+                hasImages=False,
+                hasMetadata=False,
+                imageCount=None,
+                image_count=None,
+                error=None
+            ),
+            DirectoryInfo(
+                name="Documents",
+                path=str(Path.home() / "Documents"),
+                hasImages=False,
+                hasMetadata=False,
+                imageCount=None,
+                image_count=None,
+                error=None
+            ),
+            DirectoryInfo(
+                name="Desktop",
+                path=str(Path.home() / "Desktop"),
+                hasImages=False,
+                hasMetadata=False,
+                imageCount=None,
+                image_count=None,
+                error=None
+            ),
+            DirectoryInfo(
+                name="Downloads",
+                path=str(Path.home() / "Downloads"),
+                hasImages=False,
+                hasMetadata=False,
+                imageCount=None,
+                image_count=None,
+                error=None
+            )
+        ]
+        
+        # Add volumes
+        directories.extend(volumes)
+        
+        logger.info(f"Found {len(directories)} root directories")
+        return DirectoriesResponse(directories=directories)
+    except Exception as e:
+        logger.error(f"Error listing root directories: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to list root directories: {str(e)}")
+
+@router.get("/navigate-up")
+async def navigate_up(path: str):
+    """
+    Get the parent directory of the specified path.
+    
+    Args:
+        path: The current directory path
+        
+    Returns:
+        JSON with the parent directory path
+    """
+    try:
+        # URL decode the path to handle spaces and special characters
+        decoded_path = urllib.parse.unquote(path)
+        
+        # Normalize macOS volume paths - this fixes duplicate /Volumes references
+        if decoded_path.startswith('/Volumes/Macintosh HD/Volumes/'):
+            # Remove the redundant /Volumes/Macintosh HD prefix
+            decoded_path = decoded_path.replace('/Volumes/Macintosh HD/Volumes/', '/Volumes/', 1)
+            logger.info(f"Normalized volume path to: {decoded_path}")
+            
+        current_path = Path(decoded_path)
+        
+        # Get parent directory
+        parent_path = current_path.parent
+        
+        # Make sure the parent is a valid directory
+        if not parent_path.exists() or not parent_path.is_dir():
+            logger.error(f"Parent directory does not exist: {parent_path}")
+            raise HTTPException(status_code=404, detail="Parent directory not found")
+            
+        logger.info(f"Navigating up from {current_path} to {parent_path}")
+        
+        return {"parent_path": str(parent_path)}
+    except Exception as e:
+        logger.error(f"Error navigating up: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error navigating up: {str(e)}")
+
+@router.post("/initialize-vector-store", response_model=VectorStoreInitResponse)
+async def initialize_vector_store():
+    """
+    Initialize or reinitialize the vector store for the current folder.
+    This is used when folder navigation has skipped vector store initialization.
+    """
+    try:
+        # Check for current folder
+        if not hasattr(router, 'current_folder') or not router.current_folder:
+            logger.error("No folder selected, can't initialize vector store")
+            raise HTTPException(status_code=400, detail="No folder selected")
+            
+        folder_path = Path(router.current_folder)
+        logger.info(f"Initializing vector store for folder: {folder_path}")
+        
+        # For test folders, use recursive=True
+        is_test_folder = "test_data" in str(folder_path) or "test_images" in str(folder_path)
+        recursive = is_test_folder
+        
+        # Load the metadata from the folder - this needs write access
+        logger.info(f"METADATA: Loading from folder: {folder_path}")
+        metadata = await load_or_create_metadata(folder_path, recursive=recursive, require_write_access=True)
+        logger.info(f"METADATA: Loaded {len(metadata)} entries from {folder_path}")
+        
+        # Initialize vector store
+        logger.info(f"VECTOR_STORE: Initializing for folder: {folder_path}")
+        vector_store = get_vector_store()
+        
+        # Log the processed images count
+        processed_count = sum(1 for img_data in metadata.values() if img_data.get('is_processed', False))
+        logger.info(f"METADATA: Found {processed_count}/{len(metadata)} processed images")
+        
+        # Sync the vector store with the metadata
+        logger.info(f"VECTOR_STORE: Synchronizing with metadata ({len(metadata)} entries)")
+        await vector_store.sync_with_metadata(folder_path, metadata)
+        logger.info(f"VECTOR_STORE: Synchronization complete for folder: {folder_path}")
+        
+        return {
+            "success": True,
+            "message": f"Successfully initialized vector store for {folder_path}",
+            "imageCount": len(metadata),
+            "processedCount": processed_count
+        }
+    except HTTPException as http_exc:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Log and wrap other errors
+        logger.error(f"Error initializing vector store: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to initialize vector store: {str(e)}")

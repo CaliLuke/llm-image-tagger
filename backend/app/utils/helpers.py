@@ -21,17 +21,22 @@ Metadata Storage:
 """
 
 from pathlib import Path
-from typing import Dict, Set
-import json
-import hashlib
 import traceback
+from typing import Dict, Optional, Any, List, Set, Union
 import os
+import json
+from datetime import datetime
 import time
+import hashlib
+import re
+import uuid
+from fastapi import HTTPException
+import base64
 
-from ..core.settings import settings
 from ..core.logging import logger
 from ..models.schemas import ImageInfo
 from ..services.storage import file_storage
+from ..config import settings
 
 def get_supported_extensions() -> Set[str]:
     """
@@ -171,87 +176,215 @@ def scan_folder_for_images(folder_path: Path) -> Dict[str, Dict]:
     logger.info(f"Found {len(metadata)} valid images in {folder_path}")
     return metadata
 
-async def load_or_create_metadata(folder_path: Path) -> Dict[str, Dict]:
+async def load_or_create_metadata(folder_path: Path, recursive: bool = False, require_write_access: bool = True) -> Dict[str, Dict]:
     """
-    Load existing metadata file or create new one if it doesn't exist.
-    Update metadata by adding new images and removing old records.
+    Load metadata from a folder or create it if it doesn't exist.
     
     Args:
-        folder_path: Path to the folder containing the metadata file
+        folder_path: Path to the folder
+        recursive: If True, search recursively in subdirectories
+        require_write_access: If False, don't try to write metadata if dir isn't writable
         
     Returns:
-        Dictionary of image paths and their metadata
-        
-    Raises:
-        PermissionError: If metadata file cannot be read/written due to permissions
-        StorageError: If there are other storage-related errors
+        Dictionary with image metadata
     """
     metadata_file = folder_path / "image_metadata.json"
-    image_extensions = get_supported_extensions()
     
-    logger.info(f"Loading/creating metadata for folder: {folder_path}")
-    logger.info(f"Metadata file path: {metadata_file}")
-    
-    # Load existing metadata if it exists
-    metadata = {}
-    if await file_storage.exists(metadata_file):
-        logger.info(f"Found existing metadata file")
-        try:
-            metadata = await file_storage.read(metadata_file)
-            logger.info(f"Successfully loaded metadata with {len(metadata)} entries")
-        except Exception as e:
-            logger.error(f"Error loading metadata file: {str(e)}")
-            logger.error(f"Exception type: {type(e)}")
-            logger.error(f"Exception traceback: {traceback.format_exc()}")
-            raise
-
-    # Scan folder for current images
-    logger.info("Scanning for current images")
-    current_images = {str(file_path.relative_to(folder_path)): file_path
-                      for file_path in folder_path.rglob("*")
-                      if file_path.suffix.lower() in image_extensions}
-    logger.info(f"Found {len(current_images)} images in folder")
-
-    # Add new images to metadata
-    for rel_path in current_images:
-        if rel_path not in metadata:
-            logger.info(f"Adding new image to metadata: {rel_path}")
-            metadata[rel_path] = initialize_image_metadata(rel_path)
-        # Update is_processed based on metadata content
-        metadata[rel_path]["is_processed"] = is_metadata_processed(metadata[rel_path])
-
-    # Remove old records from metadata
-    for rel_path in list(metadata.keys()):
-        if rel_path not in current_images:
-            logger.info(f"Removing stale metadata for: {rel_path}")
-            del metadata[rel_path]
-
-    # Save updated metadata
     try:
-        logger.info("Saving metadata")
-        await file_storage.write(metadata_file, metadata)
-        logger.info(f"Successfully saved metadata with {len(metadata)} entries")
-    except PermissionError as e:
-        # Check if this is an external drive error
-        if "external drive" in str(e):
-            logger.error(f"External drive permission error: {str(e)}")
-            # Return metadata without saving - this allows read-only mode
-            logger.warning(f"Operating in read-only mode for folder: {folder_path}")
-            # Re-raise with a more specific message for the API
-            raise PermissionError(f"External drive permission error: {str(e)}")
+        # Load existing metadata if it exists
+        if metadata_file.exists():
+            metadata = await file_storage.read(metadata_file)
+            logger.info(f"Loaded existing metadata from {metadata_file}")
+            
+            # Validate metadata structure
+            if not isinstance(metadata, dict):
+                logger.warning(f"Invalid metadata format in {metadata_file}, recreating...")
+                metadata = {}
         else:
-            # Other permission error
-            logger.error(f"Permission error saving metadata: {str(e)}")
-            logger.error(f"Exception type: {type(e)}")
-            logger.error(f"Exception traceback: {traceback.format_exc()}")
-            raise
+            metadata = {}
+            logger.info(f"No existing metadata found at {metadata_file}")
+        
+        # Find all images in the folder
+        image_files = []
+        logger.debug(f"Looking for images in {folder_path} with extensions: {settings.SUPPORTED_EXTENSIONS}")
+        logger.debug(f"Folder exists: {folder_path.exists()}, Is directory: {folder_path.is_dir()}")
+        
+        try:
+            # Verify the directory actually exists
+            if not folder_path.exists() or not folder_path.is_dir():
+                logger.warning(f"Directory does not exist or is not a directory: {folder_path}")
+                return {}
+                
+            # List directory contents to verify we can access it
+            try:
+                dir_contents = list(folder_path.iterdir())
+                logger.debug(f"Directory {folder_path} contains {len(dir_contents)} entries")
+                # Print first 5 entries for debugging
+                for i, entry in enumerate(dir_contents[:5]):
+                    logger.debug(f"  Entry {i+1}: {entry.name} ({'dir' if entry.is_dir() else 'file'})")
+            except Exception as e:
+                logger.error(f"Error listing directory contents: {str(e)}")
+            
+            # Try with Path.glob first (more reliable)
+            for ext in settings.SUPPORTED_EXTENSIONS:
+                # Track patterns and counts for debugging
+                # Strip the leading dot from the extension since we add it in the pattern
+                ext_name = ext[1:] if ext.startswith('.') else ext
+                lower_pattern = f"*.{ext_name.lower()}"
+                upper_pattern = f"*.{ext_name.upper()}"
+                
+                lower_count = 0
+                upper_count = 0
+                
+                # Handle case sensitivity and use both lowercase and uppercase patterns
+                if recursive:
+                    logger.debug(f"  Using rglob with pattern: {lower_pattern}")
+                    lower_results = list(folder_path.rglob(lower_pattern))
+                    lower_count = len(lower_results)
+                    
+                    logger.debug(f"  Using rglob with pattern: {upper_pattern}")
+                    upper_results = list(folder_path.rglob(upper_pattern))
+                    upper_count = len(upper_results)
+                    
+                    image_files.extend(lower_results)
+                    image_files.extend(upper_results)
+                else:
+                    logger.debug(f"  Using glob with pattern: {lower_pattern}")
+                    lower_results = list(folder_path.glob(lower_pattern))
+                    lower_count = len(lower_results)
+                    
+                    logger.debug(f"  Using glob with pattern: {upper_pattern}")
+                    upper_results = list(folder_path.glob(upper_pattern))
+                    upper_count = len(upper_results)
+                    
+                    image_files.extend(lower_results)
+                    image_files.extend(upper_results)
+                
+                logger.debug(f"  Found {lower_count} files with lowercase pattern: {lower_pattern}")
+                logger.debug(f"  Found {upper_count} files with uppercase pattern: {upper_pattern}")
+            
+            logger.debug(f"Found {len(image_files)} image files using Path.glob")
+            
+            # If no files found via Path.glob, try OS-specific alternatives
+            if not image_files and os.name == 'posix':
+                # On Unix systems, try using os.walk as fallback
+                logger.debug("Using os.walk as fallback to find images")
+                # Create extension patterns without double dots, removing leading dot if present
+                patterns = []
+                for ext in settings.SUPPORTED_EXTENSIONS:
+                    # Strip the leading dot if present
+                    ext_name = ext[1:] if ext.startswith('.') else ext
+                    patterns.append(f".{ext_name.lower()}")
+                    patterns.append(f".{ext_name.upper()}")
+                
+                logger.debug(f"Looking for files with these extensions: {patterns}")
+                
+                if recursive:
+                    for root, _, files in os.walk(str(folder_path)):
+                        matched_files = []
+                        for file in files:
+                            if any(file.endswith(pat) for pat in patterns):
+                                matched_files.append(file)
+                                image_files.append(Path(root) / file)
+                        if matched_files:
+                            logger.debug(f"  In directory {root}, found matches: {matched_files}")
+                else:
+                    try:
+                        all_files = os.listdir(str(folder_path))
+                        logger.debug(f"os.listdir found {len(all_files)} entries in {folder_path}")
+                        
+                        matched_files = []
+                        for file in all_files:
+                            file_path = os.path.join(str(folder_path), file)
+                            if os.path.isfile(file_path) and any(file.endswith(pat) for pat in patterns):
+                                matched_files.append(file)
+                                image_files.append(folder_path / file)
+                        
+                        if matched_files:
+                            logger.debug(f"  Matched files: {matched_files}")
+                    except Exception as e:
+                        logger.error(f"Error listing directory with os.listdir: {str(e)}")
+                            
+                logger.debug(f"Found {len(image_files)} image files using os.walk")
+        except Exception as e:
+            logger.error(f"Error finding image files: {str(e)}")
+            logger.error(traceback.format_exc())
+        
+        # Log what we found
+        if image_files:
+            logger.info(f"Found {len(image_files)} images in {folder_path}")
+            if len(image_files) <= 10:  # Only log all files if there aren't too many
+                for img in image_files:
+                    logger.debug(f"  Image: {img}")
+        else:
+            logger.warning(f"No images found in {folder_path}")
+        
+        # Get relative paths
+        relative_paths = []
+        for img_path in image_files:
+            try:
+                # Skip macOS resource fork files
+                if img_path.name.startswith('._'):
+                    continue
+                    
+                rel_path = str(img_path.relative_to(folder_path))
+                relative_paths.append(rel_path)
+            except ValueError as e:
+                logger.error(f"Error getting relative path for {img_path}: {str(e)}")
+        
+        # Add any missing images to metadata
+        for rel_path in relative_paths:
+            if rel_path not in metadata:
+                metadata[rel_path] = {
+                    "description": "",
+                    "tags": [],
+                    "text_content": "",
+                    "is_processed": False
+                }
+                logger.debug(f"Added new image to metadata: {rel_path}")
+        
+        # Remove any images that no longer exist or are macOS resource fork files
+        for rel_path in list(metadata.keys()):
+            if rel_path not in relative_paths or Path(rel_path).name.startswith('._'):
+                logger.debug(f"Removing {'macOS resource fork' if Path(rel_path).name.startswith('._') else 'deleted'} image from metadata: {rel_path}")
+                del metadata[rel_path]
+        
+        # Save metadata only if we have write access and require it
+        if require_write_access:
+            # Check write access first
+            try:
+                # Simple test for write permission
+                if not metadata_file.exists():
+                    test_file = folder_path / ".write_test"
+                    test_file.touch()
+                    test_file.unlink()
+                else:
+                    # If metadata file exists, we'll assume it's writable
+                    # We'll catch the exception if it's not
+                    pass
+                    
+                # Save metadata
+                if not metadata_file.exists() or relative_paths:
+                    await file_storage.write(metadata_file, metadata)
+                    logger.info(f"Saved metadata to {metadata_file} with {len(metadata)} entries")
+            except (PermissionError, OSError) as e:
+                logger.warning(f"Cannot write metadata to {folder_path}: {str(e)}")
+                # We don't raise an exception here, just log a warning
+                
+        return metadata
     except Exception as e:
-        logger.error(f"Error saving metadata: {str(e)}")
-        logger.error(f"Exception type: {type(e)}")
-        logger.error(f"Exception traceback: {traceback.format_exc()}")
-        raise
-
-    return metadata
+        logger.error(f"Error loading or creating metadata: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        # If we don't require write access, return empty metadata rather than failing
+        if not require_write_access and isinstance(e, (PermissionError, OSError)):
+            logger.warning(f"Continuing without metadata due to permission error: {str(e)}")
+            return {}
+            
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load or create metadata: {str(e)}"
+        )
 
 def create_image_info(rel_path: str, metadata: Dict[str, Dict]) -> ImageInfo:
     """

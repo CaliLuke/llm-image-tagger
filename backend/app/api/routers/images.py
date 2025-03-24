@@ -58,8 +58,15 @@ async def get_image(
         HTTPException: If image not found or inaccessible
     """
     try:
-        logger.info(f"Serving image: {path}")
+        logger.info(f"Received request for image: {path}")
+        
+        # Skip macOS resource fork files
+        if Path(path).name.startswith('._'):
+            raise HTTPException(status_code=404, detail="MacOS resource fork files are not supported")
+            
+        logger.info(f"Current folder: {current_folder}")
         full_path = Path(current_folder) / path
+        logger.info(f"Full image path: {full_path}")
         
         if not full_path.exists():
             logger.error(f"Image not found: {full_path}")
