@@ -13,6 +13,7 @@ import signal
 import psutil
 import atexit
 import logging
+import datetime
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -23,10 +24,67 @@ import socket
 backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend")
 sys.path.insert(0, backend_dir)
 
+# Try to import from backend, but handle case where it's run directly
+try:
+    from backend.app.core.logging import cleanup_old_logs
+except ImportError:
+    # Define cleanup function here if import fails
+    def cleanup_old_logs(log_file_path):
+        """
+        Remove log entries from previous days, keeping only the current day's logs.
+        
+        Args:
+            log_file_path: Path to the log file
+        """
+        today = datetime.datetime.now().strftime('%Y-%m-%d')
+        
+        if not os.path.exists(log_file_path):
+            return  # No log file exists yet
+            
+        try:
+            with open(log_file_path, 'r') as f:
+                log_content = f.readlines()
+            
+            # Filter logs to keep only current day's entries
+            current_day_logs = []
+            for line in log_content:
+                # Only check lines that might contain a timestamp
+                if len(line) > 10 and '-' in line[:10]:
+                    try:
+                        # Extract the date part (YYYY-MM-DD)
+                        log_date = line[:10]
+                        if log_date == today:
+                            current_day_logs.append(line)
+                    except (ValueError, IndexError):
+                        # If the line doesn't have a proper date format, keep it for safety
+                        current_day_logs.append(line)
+                else:
+                    # Keep lines without timestamps (could be stack traces, etc.)
+                    current_day_logs.append(line)
+            
+            # Write back only today's logs
+            with open(log_file_path, 'w') as f:
+                f.writelines(current_day_logs)
+                
+            print(f"Log cleanup complete. Removed entries older than {today}")
+        except Exception as e:
+            print(f"Error during log cleanup: {str(e)}")
+
 # Setup logging
+logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+os.makedirs(logs_dir, exist_ok=True)
+
+# Clean up the app.log file
+app_log_path = os.path.join(logs_dir, 'app.log')
+cleanup_old_logs(app_log_path)
+
+# Configure logging to stdout only - all file logging should go through the central logger
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
 

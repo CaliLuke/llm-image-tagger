@@ -1,8 +1,15 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from backend.app.core.logging import logger
+from backend.app.core.logging import logger, cleanup_old_logs
+import os
 
 from backend.app.api.routes import router
+
+# Clean up logs on startup
+logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+os.makedirs(logs_dir, exist_ok=True)
+app_log_path = os.path.join(logs_dir, 'app.log')
+cleanup_old_logs(app_log_path)
 
 app = FastAPI()
 

@@ -8,18 +8,58 @@ This module provides:
 4. Stdout logging for container compatibility
 5. Third-party logger management
 
-Features:
-- Timestamp with millisecond precision
-- Module name for easy tracing
-- Log level indicators
-- Structured message format
-- Quiet mode for chatty dependencies
+IMPORTANT: ALL APPLICATION LOGGING MUST USE THIS MODULE
+- Do NOT create additional log files
+- Do NOT bypass this centralized logging configuration
+- ALL logs should go to app.log only
 """
 
 import logging
 import sys
 import os
+import datetime
 from .settings import settings
+
+def cleanup_old_logs(log_file_path):
+    """
+    Remove log entries from previous days, keeping only the current day's logs.
+    
+    Args:
+        log_file_path: Path to the log file
+    """
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    
+    if not os.path.exists(log_file_path):
+        return  # No log file exists yet
+        
+    try:
+        with open(log_file_path, 'r') as f:
+            log_content = f.readlines()
+        
+        # Filter logs to keep only current day's entries
+        current_day_logs = []
+        for line in log_content:
+            # Only check lines that might contain a timestamp
+            if len(line) > 10 and '-' in line[:10]:
+                try:
+                    # Extract the date part (YYYY-MM-DD)
+                    log_date = line[:10]
+                    if log_date == today:
+                        current_day_logs.append(line)
+                except (ValueError, IndexError):
+                    # If the line doesn't have a proper date format, keep it for safety
+                    current_day_logs.append(line)
+            else:
+                # Keep lines without timestamps (could be stack traces, etc.)
+                current_day_logs.append(line)
+        
+        # Write back only today's logs
+        with open(log_file_path, 'w') as f:
+            f.writelines(current_day_logs)
+            
+        print(f"Log cleanup complete. Removed entries older than {today}")
+    except Exception as e:
+        print(f"Error during log cleanup: {str(e)}")
 
 def setup_logging():
     """
@@ -41,6 +81,9 @@ def setup_logging():
     - uvicorn: Set to WARNING to reduce API noise
     - uvicorn.access: Set to WARNING to reduce API access logs
     - chromadb: Set to WARNING to reduce vector DB noise
+    
+    IMPORTANT: This is the ONLY place where log files should be configured.
+    Do NOT create additional log files elsewhere in the application.
     
     Returns:
         logging.Logger: Configured application logger
@@ -77,8 +120,12 @@ def setup_logging():
     stdout_handler.setFormatter(terminal_format)
     stdout_handler.setLevel(logging.WARNING)  # Only show warnings and errors in terminal
     
+    # Clean up old logs
+    log_file_path = os.path.join(logs_dir, 'app.log')
+    cleanup_old_logs(log_file_path)
+    
     # Add file handler for persistent logging
-    file_handler = logging.FileHandler(os.path.join(logs_dir, 'app.log'))
+    file_handler = logging.FileHandler(log_file_path)
     file_handler.setFormatter(file_format)
     file_handler.setLevel(logging.DEBUG)  # Always log everything to file
     
@@ -137,4 +184,4 @@ def setup_logging():
 logger = setup_logging()
 
 # Export the logger
-__all__ = ['logger'] 
+__all__ = ['logger', 'cleanup_old_logs'] 

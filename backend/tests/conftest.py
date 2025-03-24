@@ -18,8 +18,10 @@ from app.models.schemas import ImageDescription, ImageTags, ImageText
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
-# Add the backend directory to the path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the backend directory to the Python path for tests
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+project_root = os.path.dirname(backend_dir)
+sys.path.insert(0, project_root)
 
 from main import app
 

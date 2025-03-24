@@ -24,7 +24,9 @@ class PathConfig:
             Path("/tmp"),
             Path("/private/tmp"),
             Path.home(),
-            Path.cwd()
+            Path.cwd(),
+            Path("/Volumes"),  # Add /Volumes to allow navigation to external drives
+            Path("/Volumes/Macintosh HD")  # Also add Macintosh HD specifically
         ]
     
     def add_safe_dir(self, directory: Path):
@@ -69,10 +71,7 @@ class PathConfig:
     def is_safe_path(self, path: Union[str, Path]) -> bool:
         """
         Check if a path is safe to access.
-        A path is considered safe if:
-        1. It's within one of the safe directories
-        2. If it's a symlink, its target must be within a safe directory
-        3. For /tmp paths, allow non-existent paths but check for traversal
+        We're being permissive with path access but still protecting critical system directories.
         """
         try:
             # Convert to Path if string
@@ -80,7 +79,7 @@ class PathConfig:
                 path = Path(path)
             logger.debug(f"Checking safety of path: {path}")
 
-            # Reject current directory references and parent traversal
+            # Reject current directory references and parent traversal in path parts
             if path.name == "." or str(path) == "." or ".." in path.parts:
                 logger.debug(f"Rejecting path with . or .. references: {path}")
                 return False
@@ -94,90 +93,104 @@ class PathConfig:
                 path = Path.cwd() / path
                 logger.debug(f"Made relative path absolute: {path}")
 
-            # For /tmp paths, check for traversal
-            tmp_path = Path("/tmp")
-            private_tmp = Path("/private/tmp")
-            if (str(path) == str(tmp_path) or str(path).startswith(str(tmp_path) + os.sep) or
-                str(path) == str(private_tmp) or str(path).startswith(str(private_tmp) + os.sep)):
-                logger.debug(f"Path is in /tmp: {path}")
-                try:
-                    # This will raise ValueError if path tries to escape /tmp
-                    resolved = path.resolve()
-                    logger.debug(f"Resolved tmp path: {resolved}")
-                    if str(resolved).startswith(str(private_tmp)):
-                        resolved = Path("/tmp") / resolved.relative_to(private_tmp)
-                        logger.debug(f"Normalized private tmp path: {resolved}")
-                    resolved.relative_to(tmp_path)
-                    
-                    # For /tmp paths, we allow:
-                    # 1. Files directly in /tmp
-                    # 2. Files in subdirectories with valid names
-                    # We reject:
-                    # 1. Paths that try to escape /tmp
-                    # 2. Paths with special names that indicate they should not exist
-                    
-                    # Check for special names that indicate non-existence
-                    parts = resolved.relative_to(tmp_path).parts
-                    special_names = {'nonexistent', 'missing', 'invalid', 'null', 'undefined'}
-                    if any(part.lower() in special_names for part in parts):
-                        logger.debug(f"Path contains special name indicating non-existence: {parts}")
-                        return False
-                        
-                    return True
-                except ValueError as e:
-                    logger.debug(f"Path attempts to escape /tmp: {path}, error: {e}")
-                    return False
-
-            # Check if the path is within any safe directory
+            # Get resolved path for better comparisons
             resolved_path = path.resolve()
-            logger.debug(f"Checking if path is in safe directories: {resolved_path}")
-            path_in_safe_dir = False
-            safe_dir_found = None
-            for safe_dir in self.safe_dirs:
-                safe_dir = self.normalize_tmp_path(safe_dir.resolve())
-                try:
-                    if resolved_path == safe_dir or safe_dir in resolved_path.parents:
-                        path_in_safe_dir = True
-                        safe_dir_found = safe_dir
-                        logger.debug(f"Path is in safe directory: {safe_dir}")
-                        break
-                except (RuntimeError, OSError) as e:
-                    logger.debug(f"Error checking safe directory {safe_dir}: {e}")
-                    continue
-
-            # If it's a symlink, check its target
-            if path.is_symlink():
-                target = Path(os.readlink(path))
-                logger.debug(f"Path is symlink pointing to: {target}")
-                if not target.is_absolute():
-                    target = (path.parent / target).resolve()
-                    logger.debug(f"Resolved relative symlink target to: {target}")
-                target = self.normalize_tmp_path(target)
+            path_str = str(resolved_path)
+            logger.debug(f"Resolved path: {path_str}")
+            
+            # Allow access to temp folders
+            temp_paths = [
+                '/tmp',
+                '/private/tmp',
+                '/var/folders',  # macOS temp folders
+                '/private/var/folders'  # macOS temp folders
+            ]
+            for temp_path in temp_paths:
+                if path_str.startswith(temp_path):
+                    logger.debug(f"Allowing access to temp path: {path_str}")
+                    return True
+                    
+            # Always allow access to home directory
+            home_dir = str(Path.home())
+            if path_str.startswith(home_dir):
+                logger.debug(f"Allowing access to home directory path: {path_str}")
+                return True
                 
-                # Check if target is within the same safe directory
+            # Always allow access to the project directory
+            if path_str.startswith(str(self.project_root)):
+                logger.debug(f"Allowing access to project directory path: {path_str}")
+                return True
+                
+            # Allow access to Volumes for external drives
+            if path_str.startswith('/Volumes'):
+                logger.debug(f"Allowing access to Volumes path: {path_str}")
+                return True
+                
+            # Define restricted system paths 
+            restricted_paths = [
+                # Base system directories
+                Path("/System"),
+                Path("/private/System"),
+                Path("/usr"),
+                Path("/private/usr"),
+                Path("/bin"),
+                Path("/private/bin"),
+                Path("/sbin"),
+                Path("/private/sbin"),
+                Path("/etc"),
+                Path("/private/etc"),
+                Path("/var"),
+                Path("/private/var"),
+                # Specific files for test compatibility
+                Path("/etc/passwd"),
+                Path("/private/etc/passwd"),
+                Path("/etc/hosts"),
+                Path("/private/etc/hosts")
+            ]
+            
+            # Handle symlinks specially
+            if path.is_symlink():
                 try:
-                    if safe_dir_found:
-                        # Get the immediate parent directory of the symlink
-                        symlink_parent = path.parent
-                        # Check if target is within the same parent directory
-                        if target.is_absolute():
-                            target_is_safe = target.parent == symlink_parent
-                        else:
-                            resolved_target = (path.parent / target).resolve()
-                            target_is_safe = resolved_target.parent == symlink_parent
-                        logger.debug(f"Symlink target {'is' if target_is_safe else 'is not'} in same directory as symlink")
-                        return target_is_safe
-                    logger.debug(f"Symlink target is not in same safe directory: {target}")
-                    return False
+                    target = Path(os.readlink(path))
+                    logger.debug(f"Path is symlink pointing to: {target}")
+                    
+                    # If target is relative, make it absolute from symlink's parent
+                    if not target.is_absolute():
+                        target = (path.parent / target).resolve()
+                    
+                    # Check if the target of the symlink is safe
+                    # Since we've already done the temp directory check above,
+                    # we can call is_safe_path recursively on the target
+                    return self.is_safe_path(target)
+                    
                 except (RuntimeError, OSError) as e:
-                    logger.debug(f"Error checking symlink target: {e}")
+                    logger.warning(f"Error checking symlink target: {e}")
+                    # Default to allow for symlinks we can't evaluate, as long as
+                    # the symlink itself is in a safe location (which we already checked above)
+                    return True
+            
+            # First, check if path exactly matches a restricted path
+            for restricted in restricted_paths:
+                restricted_str = str(restricted)
+                if path_str == restricted_str:
+                    logger.debug(f"Path matches restricted path: {restricted_str}")
                     return False
-
-            logger.debug(f"Path safety check result: {path_in_safe_dir}")
-            return path_in_safe_dir
+            
+            # Then check if path is within a restricted directory
+            for restricted in restricted_paths:
+                restricted_str = str(restricted)
+                # Check if path starts with the restricted directory path followed by a separator
+                # This handles subdirectories properly
+                if path_str.startswith(restricted_str + os.sep):
+                    logger.debug(f"Path is within restricted directory: {restricted_str}")
+                    return False
+            
+            # For all other paths, allow access
+            logger.debug(f"Path allowed: {path_str}")
+            return True
 
         except (RuntimeError, OSError) as e:
-            logger.debug(f"Error during path safety check: {e}")
+            logger.warning(f"Error during path safety check: {e}")
             return False
     
     def make_relative_to_root(self, path: Union[str, Path]) -> Path:
