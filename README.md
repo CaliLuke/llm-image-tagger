@@ -155,6 +155,11 @@ Each step yields progress updates that are scaled within its range, ensuring smo
 - **Python 3.11+**: Ensure Python 3.11 or newer is installed on your system
 - **Ollama**: Install Ollama to run the Llama model ([Ollama website](https://ollama.com/))
 - **ChromaDB**: Will be installed via pip
+- **Exempi**: Required for XMP metadata handling
+  - **macOS**: `brew install exempi`
+  - **Ubuntu/Debian**: `sudo apt-get install libexempi3 libexempi-dev`
+  - **Fedora/RHEL**: `sudo dnf install exempi exempi-devel`
+  - **Windows**: Build from source or use pre-built binaries
 - **Data Directory**: The application requires write access to create and manage a data directory for queue persistence and other operational data. By default, this is created at:
   - `$PROJECT_ROOT/data` (where $PROJECT_ROOT is the root directory of the project)
   - Ensure your user has write permissions to this location
@@ -212,16 +217,42 @@ llm-image-tagger/
     pip install -r requirements.txt
     ```
 
-3. **Configure environment variables:**
+3. **Configure XMP support:**
+
+    The application uses XMP for image metadata handling, which requires the Exempi library.
+    
+    ```bash
+    # Ensure Exempi is installed on your system:
+    # macOS: brew install exempi
+    # Ubuntu/Debian: sudo apt-get install libexempi3 libexempi-dev
+    # Fedora/RHEL: sudo dnf install exempi exempi-devel
+    
+    # Make sure your virtual environment is active, then:
+    source setup_exempi.sh
+    ```
+    
+    This script will:
+    - Detect your operating system
+    - Find the Exempi library on your system
+    - Configure the necessary environment variables
+    - Verify the configuration
+
+    If you encounter issues with XMP support:
+    - Ensure Exempi is properly installed
+    - Make sure you use `source setup_exempi.sh` (not just running the script)
+    - Check that your virtual environment is activated
+    - Look at log messages for specific paths that need to be configured
+
+4. **Configure environment variables:**
     - Copy the `.env.example` file in the backend directory to `.env`
     - Modify the values as needed
 
-4. **Install Ollama and pull the model:**
+5. **Install Ollama and pull the model:**
     - Download and install Ollama from [ollama.com](https://ollama.com/)
-    - Pull the Llama 3.2 Vision model:
+    - Pull the gemma3:4b model:
 
     ```bash
-    ollama pull llama3.2-vision
+    ollama pull gemma3:4b
     ```
 
 ## Running the Application
@@ -229,6 +260,15 @@ llm-image-tagger/
 You can run the application using the `run.py` script, which provides several command-line options:
 
 ```bash
+# Always ensure your virtual environment is active first
+source venv/bin/activate  # On Unix/macOS
+# or
+venv\Scripts\activate  # On Windows
+
+# Configure Exempi (must be done in every new terminal session)
+source setup_exempi.sh
+
+# Now run the application
 python run.py [options]
 ```
 
@@ -264,12 +304,14 @@ python run.py --force
 
 ## Usage
 
-1. **Activate the virtual environment:**
+1. **Activate the virtual environment and configure Exempi:**
 
     ```bash
     source venv/bin/activate  # On Unix/macOS
     # or
     venv\Scripts\activate  # On Windows
+    
+    source setup_exempi.sh  # Configure Exempi paths
     ```
 
 2. **Run the application:**
